@@ -1,0 +1,227 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --- Enums (diagramme UML Radio Lomé) ---
+
+enum Role {
+  AGENT
+  CHEF_SECTION
+  CHEF_DIVISION
+  RESPONSABLE_RH
+  CHEF_PERSONNEL
+  DG
+}
+
+enum Sexe {
+  M
+  F
+}
+
+enum Categorie {
+  D
+  C
+  B
+  A3
+  A2
+  A1
+}
+
+enum Classe {
+  CLASSE_3
+  CLASSE_2
+  CLASSE_1
+  CLASSE_PRINCIPALE
+  EXCEPTIONNELLE
+}
+
+enum TypeAgent {
+  FONCTIONNAIRE
+  CONTRACTUEL
+  PIVOTE
+}
+
+enum EtatCarriere {
+  STAGIAIRE
+  TITULAIRE
+  SORTI
+}
+
+enum NatureModif {
+  ECHELON
+  CLASSE
+  CATEGORIE
+}
+
+enum ModeModif {
+  AUTOMATIQUE
+  MANUEL
+}
+
+enum ResultatExamen {
+  ADMIS
+  AJOURNE
+}
+
+enum MotifDepart {
+  RETRAITE
+  DEMISSION
+  REVOCATION
+  DECES
+  AUTRE
+}
+
+// --- Agents et organisation ---
+
+model Division {
+  id       Int     @id @default(autoincrement())
+  libelle  String
+  chefId   Int?    @unique
+  chef     Personnes? @relation("ChefDivision", fields: [chefId], references: [id])
+  sections Section[]
+}
+
+model Section {
+  id         Int      @id @default(autoincrement())
+  libelle    String
+  divisionId Int
+  division   Division @relation(fields: [divisionId], references: [id])
+  chefId     Int?     @unique
+  chef       Personnes? @relation("ChefSection", fields: [chefId], references: [id])
+  affectations Affectation[]
+}
+
+/// Association d'affectation Section 0..* <-> Personnes 0..* (diagramme : affectation)
+model Affectation {
+  personneId Int
+  sectionId  Int
+  personne   Personnes @relation(fields: [personneId], references: [id])
+  section    Section   @relation(fields: [sectionId], references: [id])
+
+  @@id([personneId, sectionId])
+  @@map("affectation")
+}
+
+model Personnes {
+  id                      Int           @id @default(autoincrement())
+  nom                     String
+  prenoms                 String
+  dateNaissance           DateTime      @db.Date
+  lieuNaissance           String
+  sexe                    Sexe
+  nbreEnfant              Int
+  nomPersonnePrevenir     String
+  contactPersonnePrevenir String
+  telephone               String
+  adresse                 String
+  diplome                 String
+  fonction                String
+  matricule               String        @unique
+  categorie               Categorie
+  classe                  Classe
+  echelon                 Int
+  indice                  Int
+  typeAgent               TypeAgent
+  etatCarriere            EtatCarriere
+  dateEntree              DateTime      @db.Date
+  dateDebutStage          DateTime?     @db.Date
+  dateFinStagePrevue      DateTime?     @db.Date
+  dateFinContrat          DateTime?     @db.Date
+  dateDernierAvancement   DateTime?     @db.Date
+  dateDepart              DateTime?     @db.Date
+  motifDepart             MotifDepart?
+  estArchive              Boolean       @default(false)
+
+  chefDeDivision Division?        @relation("ChefDivision")
+  chefDeSection  Section?         @relation("ChefSection")
+  affectations   Affectation[]
+  historique     Mods[]
+  titularisation Titularisation?
+  documents      Documents[]
+}
+
+// --- Carrière ---
+
+model Mods {
+  id                   Int         @id @default(autoincrement())
+  ancCategorie         Categorie
+  ancClasse            Classe
+  ancEchelon           Int
+  ancFonction          String
+  nvCategorie          Categorie
+  nvClasse             Classe
+  nvEchelon            Int
+  nvFonction           String
+  dateEffet            DateTime    @db.Date
+  nature               NatureModif
+  mode                 ModeModif
+  justification        String?
+  personneId           Int
+  personne             Personnes   @relation(fields: [personneId], references: [id])
+  pieceJustificativeId Int?        @unique
+  pieceJustificative   Documents?  @relation("PieceJustificative", fields: [pieceJustificativeId], references: [id])
+  modificateurId       Int
+  modificateur         Utilisateur @relation(fields: [modificateurId], references: [id])
+
+  @@map("mods")
+}
+
+model Titularisation {
+  id                 Int             @id @default(autoincrement())
+  dateExamen         DateTime        @db.Date
+  resultat           ResultatExamen
+  dateEffet          DateTime        @db.Date
+  referenceDecision  String
+  personneId         Int             @unique
+  personne           Personnes       @relation(fields: [personneId], references: [id])
+}
+
+// --- Documents et courriers ---
+// Documents.estArchive : volontairement absent (demande utilisateur : ne pas toucher cet attribut).
+
+model TypeDoc {
+  id         Int         @id @default(autoincrement())
+  libelle    String
+  documents  Documents[]
+
+  @@map("typeDoc")
+}
+
+model Documents {
+  id           Int         @id @default(autoincrement())
+  lien         String
+  titre        String
+  description  String
+  numeroOrdre  String
+  reference    String
+  expediteur   String
+  dateDocument DateTime    @db.Date
+  dateAjout    DateTime    @db.Date
+  personneId   Int
+  personne     Personnes   @relation(fields: [personneId], references: [id])
+  typeDocId    Int
+  typeDoc      TypeDoc     @relation(fields: [typeDocId], references: [id])
+  ajouteParId  Int
+  ajoutePar    Utilisateur @relation("DocumentsAjoutesPar", fields: [ajouteParId], references: [id])
+  modsJustifie Mods?       @relation("PieceJustificative")
+}
+
+// --- Comptes ---
+// JournalAudit : volontairement absent (n'existait pas dans le schéma ; ne pas l'ajouter).
+
+model Utilisateur {
+  id                 Int          @id @default(autoincrement())
+  email              String       @unique
+  passwordHash       String
+  isActive           Boolean      @default(true)
+  role               Role
+  dateDesactivation  DateTime?    @db.Date
+  motifDesactivation String?
+  modifications      Mods[]
+  documentsAjoutes   Documents[]  @relation("DocumentsAjoutesPar")
+}
