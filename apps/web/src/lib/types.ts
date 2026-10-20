@@ -1,25 +1,89 @@
+// --- Enums issus directement du schéma Prisma ---
+
 export type Role =
+  | "AGENT"
+  | "CHEF_SECTION"
+  | "CHEF_DIVISION"
+  | "RESPONSABLE_RH"
+  | "CHEF_PERSONNEL"
+  | "DG"
+  // Aliases minuscules pour rétro-compatibilité
   | "agent"
   | "chef"
   | "rh"
   | "chef_personnel"
   | "dg";
 
-export type StatutAgent = "fonctionnaire" | "contractuel" | "pigiste";
+export type Sexe = "M" | "F";
 
-export type SituationService =
+export type Categorie = "D" | "C" | "B" | "A3" | "A2" | "A1" | "A";
+
+export type Classe =
+  | "CLASSE_3"
+  | "CLASSE_2"
+  | "CLASSE_1"
+  | "CLASSE_PRINCIPALE"
+  | "EXCEPTIONNELLE"
+  | "1"
+  | "2"
+  | "3"
+  | "4";
+
+export type TypeAgent =
+  | "FONCTIONNAIRE"
+  | "CONTRACTUEL"
+  | "PIVOTE"
+  // Aliases minuscules
+  | "fonctionnaire"
+  | "contractuel"
+  | "pigiste";
+
+export type EtatCarriere =
+  | "STAGIAIRE"
+  | "TITULAIRE"
+  | "SORTI"
+  // Aliases minuscules
   | "stagiaire"
   | "titulaire"
   | "fin_parcours";
 
-export type FinParcoursType =
+export type NatureModif =
+  | "ECHELON"
+  | "CLASSE"
+  | "CATEGORIE"
+  | "echelon"
+  | "classe"
+  | "categorie";
+
+export type ModeModif =
+  | "AUTOMATIQUE"
+  | "MANUEL"
+  | "automatique"
+  | "manuel";
+
+export type ResultatExamen =
+  | "ADMIS"
+  | "AJOURNE"
+  | "admis"
+  | "ajourne";
+
+export type MotifDepart =
+  | "RETRAITE"
+  | "DEMISSION"
+  | "REVOCATION"
+  | "DECES"
+  | "AUTRE"
   | "retraite"
   | "demission"
   | "revocation"
   | "deces"
   | "fin_contrat";
 
-export type TypeAvancement = "automatique" | "manuel";
+// Types d'alias existants pour la compatibilité IHM
+export type StatutAgent = TypeAgent;
+export type SituationService = EtatCarriere;
+export type FinParcoursType = MotifDepart;
+export type TypeAvancement = ModeModif;
 
 export type TypeDocument =
   | "piece_identite"
@@ -45,9 +109,11 @@ export type TypeCourrier =
   | "circulaire"
   | "arrete_ministeriel";
 
+// --- Interfaces d'entités correspondant aux modèles Prisma ---
+
 export interface ExamenTitularisation {
   date: string;
-  resultat: "admis" | "ajourne";
+  resultat: ResultatExamen;
   reference: string;
 }
 
@@ -58,40 +124,74 @@ export interface FinParcours {
   reference?: string;
 }
 
-export interface Agent {
+/** Modèle Personnes (Prisma) + extensions IHM */
+export interface Personnes {
   id: string;
-  matricule: string;
   nom: string;
   prenoms: string;
-  sexe: "M" | "F";
   dateNaissance: string;
   lieuNaissance: string;
-  nationalite: string;
-  situationMatrimoniale: string;
-  nombreEnfants: number;
+  sexe: Sexe;
+  nbreEnfant: number;
+  nomPersonnePrevenir: string;
+  contactPersonnePrevenir: string;
   telephone: string;
-  email: string;
   adresse: string;
-  formation: string;
   diplome: string;
-  statut: StatutAgent;
-  situation: SituationService;
-  categorie: string;
-  classe: string;
-  echelon: string;
-  service: string;
-  poste: string;
-  chefId?: string;
+  fonction: string; // ex: Intitulé du poste
+  matricule: string;
+  categorie: Categorie;
+  classe: Classe;
+  echelon: string | number;
+  indice: number;
+  typeAgent: TypeAgent;
+  etatCarriere: EtatCarriere;
   dateEntree: string;
+  dateDebutStage?: string | null;
+  dateFinStagePrevue?: string | null;
+  dateFinContrat?: string | null;
+  dateDernierAvancement?: string | null;
+  dateDepart?: string | null;
+  motifDepart?: MotifDepart | null;
+  estArchive?: boolean;
+
+  // Champs d'aide et d'association pour l'IHM
+  email?: string;
+  chefId?: string;
+  service?: string;
+  poste?: string; // alias de fonction
+  statut?: StatutAgent; // alias de typeAgent
+  situation?: SituationService; // alias de etatCarriere
+  nombreEnfants?: number; // alias de nbreEnfant
+  nationalite?: string;
+  situationMatrimoniale?: string;
+  formation?: string;
   dateTitularisation?: string;
   examenTitularisation?: ExamenTitularisation;
   finParcours?: FinParcours;
   photo?: string;
 }
 
+export type Agent = Personnes;
+
+export interface Division {
+  id: string;
+  libelle: string;
+  chefId?: string;
+}
+
+export interface Section {
+  id: string;
+  libelle: string;
+  divisionId: string;
+  chefId?: string;
+}
+
 export interface Affectation {
   id: string;
   agentId: string;
+  personneId?: string;
+  sectionId?: string;
   service: string;
   poste: string;
   dateDebut: string;
@@ -99,22 +199,47 @@ export interface Affectation {
   auteurId: string;
 }
 
-export interface Avancement {
+/** Modèle Mods (Prisma) - Avancements et modifications de carrière */
+export interface Mods {
   id: string;
   agentId: string;
+  personneId?: string;
+  ancCategorie: Categorie;
+  ancClasse: Classe;
+  ancEchelon: string | number;
+  ancFonction: string;
+  nvCategorie: Categorie;
+  nvClasse: Classe;
+  nvEchelon: string | number;
+  nvFonction: string;
   dateEffet: string;
-  ancienneCategorie: string;
-  nouvelleCategorie: string;
-  ancienneClasse: string;
-  nouvelleClasse: string;
-  ancienEchelon: string;
-  nouvelEchelon: string;
-  type: TypeAvancement;
-  nature: "echelon" | "classe" | "categorie";
-  justification: string;
-  auteurId: string;
-  pieceJointeId?: string;
-  createdAt: string;
+  nature: NatureModif;
+  mode: ModeModif;
+  justification?: string;
+  pieceJustificativeId?: string;
+  modificateurId?: string;
+  auteurId?: string;
+  createdAt?: string;
+
+  // Aliases IHM
+  type?: TypeAvancement;
+  ancienneCategorie?: Categorie;
+  nouvelleCategorie?: Categorie;
+  ancienneClasse?: Classe;
+  nouvelleClasse?: Classe;
+  ancienEchelon?: string | number;
+  nouvelEchelon?: string | number;
+}
+
+export type Avancement = Mods;
+
+export interface Titularisation {
+  id: string;
+  dateExamen: string;
+  resultat: ResultatExamen;
+  dateEffet: string;
+  referenceDecision: string;
+  personneId: string;
 }
 
 export interface DocumentVersion {
@@ -130,8 +255,15 @@ export interface DocumentVersion {
 export interface DocumentDossier {
   id: string;
   agentId: string;
+  personneId?: string;
   type: TypeDocument;
   titre: string;
+  description?: string;
+  numeroOrdre?: string;
+  reference?: string;
+  expediteur?: string;
+  dateDocument?: string;
+  dateAjout?: string;
   archive: boolean;
   versions: DocumentVersion[];
   createdAt: string;
@@ -166,18 +298,25 @@ export interface Conge {
   createdAt: string;
 }
 
-export interface Compte {
+export interface Utilisateur {
   id: string;
   identifiant: string;
+  email?: string;
+  passwordHash?: string;
   motDePasse: string;
   agentId: string;
+  personneId?: string;
   role: Role;
+  isActive?: boolean;
   actif: boolean;
   motifDesactivation?: string;
+  dateDesactivation?: string;
   tentativesEchouees: number;
   verrouilleJusqua?: string;
   createdAt: string;
 }
+
+export type Compte = Utilisateur;
 
 export interface EntreeAudit {
   id: string;
@@ -199,6 +338,8 @@ export interface GrilleAvancement {
 }
 
 export interface AppState {
+  divisions: Division[];
+  sections: Section[];
   agents: Agent[];
   affectations: Affectation[];
   avancements: Avancement[];
@@ -210,7 +351,16 @@ export interface AppState {
   grille: GrilleAvancement;
 }
 
-export const ROLE_LABELS: Record<Role, string> = {
+// --- Mappings de libellés pour l'affichage IHM ---
+
+export const ROLE_LABELS: Record<string, string> = {
+  AGENT: "Agent (membre)",
+  CHEF_SECTION: "Chef de section",
+  CHEF_DIVISION: "Chef de division",
+  RESPONSABLE_RH: "Responsable RH",
+  CHEF_PERSONNEL: "Chef du personnel",
+  DG: "Directeur général",
+  // Aliases minuscules
   agent: "Agent (membre)",
   chef: "Chef de section / division",
   rh: "Responsable RH",
@@ -218,16 +368,79 @@ export const ROLE_LABELS: Record<Role, string> = {
   dg: "Directeur général",
 };
 
-export const STATUT_LABELS: Record<StatutAgent, string> = {
+export const TYPE_AGENT_LABELS: Record<string, string> = {
+  FONCTIONNAIRE: "Fonctionnaire",
+  CONTRACTUEL: "Contractuel",
+  PIVOTE: "Pigiste (Pivoté)",
   fonctionnaire: "Fonctionnaire",
   contractuel: "Contractuel",
   pigiste: "Pigiste",
 };
 
-export const SITUATION_LABELS: Record<SituationService, string> = {
+export const STATUT_LABELS = TYPE_AGENT_LABELS;
+
+export const ETAT_CARRIERE_LABELS: Record<string, string> = {
+  STAGIAIRE: "Stagiaire",
+  TITULAIRE: "Titulaire",
+  SORTI: "Fin de parcours (Sorti)",
   stagiaire: "Stagiaire",
   titulaire: "Titulaire",
   fin_parcours: "Fin de parcours",
+};
+
+export const SITUATION_LABELS = ETAT_CARRIERE_LABELS;
+
+export const CATEGORIE_LABELS: Record<string, string> = {
+  A1: "Catégorie A1",
+  A2: "Catégorie A2",
+  A3: "Catégorie A3",
+  B: "Catégorie B",
+  C: "Catégorie C",
+  D: "Catégorie D",
+  A: "Catégorie A",
+};
+
+export const CLASSE_LABELS: Record<string, string> = {
+  CLASSE_3: "3ème Classe",
+  CLASSE_2: "2ème Classe",
+  CLASSE_1: "1ère Classe",
+  CLASSE_PRINCIPALE: "Classe Principale",
+  EXCEPTIONNELLE: "Classe Exceptionnelle",
+  "1": "Classe 1",
+  "2": "Classe 2",
+  "3": "Classe 3",
+  "4": "Classe 4",
+};
+
+export const MOTIF_DEPART_LABELS: Record<string, string> = {
+  RETRAITE: "Retraite",
+  DEMISSION: "Démission",
+  REVOCATION: "Révocation",
+  DECES: "Décès",
+  AUTRE: "Autre motif",
+  retraite: "Retraite",
+  demission: "Démission",
+  revocation: "Révocation",
+  deces: "Décès",
+  fin_contrat: "Fin de contrat",
+};
+
+export const FIN_LABELS = MOTIF_DEPART_LABELS;
+
+export const RESULTAT_EXAMEN_LABELS: Record<string, string> = {
+  ADMIS: "Admis",
+  AJOURNE: "Ajourné",
+  admis: "Admis",
+  ajourne: "Ajourné",
+};
+
+export const NATURE_MODIF_LABELS: Record<string, string> = {
+  ECHELON: "Échelon",
+  CLASSE: "Classe",
+  CATEGORIE: "Catégorie",
+  echelon: "Échelon",
+  classe: "Classe",
+  categorie: "Catégorie",
 };
 
 export const DOCUMENT_LABELS: Record<TypeDocument, string> = {
@@ -257,20 +470,12 @@ export const COURRIER_LABELS: Record<TypeCourrier, string> = {
   arrete_ministeriel: "Arrêté ministériel",
 };
 
-export const FIN_LABELS: Record<FinParcoursType, string> = {
-  retraite: "Retraite",
-  demission: "Démission",
-  revocation: "Révocation",
-  deces: "Décès",
-  fin_contrat: "Fin de contrat",
-};
-
 export const SERVICES = [
-  "Direction générale",
-  "Direction de l'information",
-  "Direction des programmes",
-  "Direction technique",
-  "Direction administrative et financière",
+  "Division générale",
+  "Division de l'information",
+  "Division des programmes",
+  "Division technique",
+  "Division administrative et financière",
   "Service du personnel",
   "Archives et documentation",
   "Production et antenne",

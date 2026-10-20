@@ -1,24 +1,34 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import Link from "next/link";
+import { useHeader } from "@/lib/header-context";
 
 export function PageHeader({
   title,
   subtitle,
   children,
 }: {
-  title: string;
+  title?: string;
   subtitle?: string;
   children?: ReactNode;
 }) {
+  const { setHeaderInfo } = useHeader();
+
+  useEffect(() => {
+    if (title || subtitle) {
+      setHeaderInfo({ title, subtitle });
+    }
+    return () => {
+      setHeaderInfo({ title: null, subtitle: null });
+    };
+  }, [title, subtitle, setHeaderInfo]);
+
+  if (!children) return null;
+
   return (
-    <div className="page-head">
-      <div>
-        <h2>{title}</h2>
-        {subtitle ? <p>{subtitle}</p> : null}
-      </div>
-      {children ? <div className="actions">{children}</div> : null}
+    <div className="page-actions-bar" style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 8 }}>
+      <div className="actions">{children}</div>
     </div>
   );
 }
@@ -53,8 +63,8 @@ export function ButtonLink({
   );
 }
 
-export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <section className={`card ${className}`}>{children}</section>;
+export function Card({ children, className = "", style }: { children: ReactNode; className?: string; style?: React.CSSProperties }) {
+  return <section className={`card ${className}`} style={style}>{children}</section>;
 }
 
 export function Alert({
@@ -83,11 +93,13 @@ export function Loading() {
 export function Badge({
   children,
   tone = "gray",
+  style,
 }: {
   children: ReactNode;
   tone?: "green" | "gold" | "red" | "gray" | "blue";
+  style?: React.CSSProperties;
 }) {
-  return <span className={`badge badge-${tone}`}>{children}</span>;
+  return <span className={`badge badge-${tone}`} style={style}>{children}</span>;
 }
 
 export function Field({

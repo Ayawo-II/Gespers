@@ -16,9 +16,11 @@ import type {
   Compte,
   Conge,
   Courrier,
+  Division,
   DocumentDossier,
   EntreeAudit,
   Role,
+  Section,
 } from "@/lib/types";
 import { congeOverlap, uid } from "@/lib/utils";
 
@@ -40,9 +42,13 @@ type StoreContextValue = {
   resetData: () => void;
   audit: (entry: Omit<EntreeAudit, "id" | "date">) => void;
   saveAgent: (agent: Agent, isNew: boolean) => { ok: true } | { ok: false; error: string };
+  saveDivision: (division: Division, isNew: boolean) => { ok: true } | { ok: false; error: string };
+  saveSection: (section: Section, isNew: boolean) => { ok: true } | { ok: false; error: string };
   titulariser: (agentId: string, data: NonNullable<Agent["examenTitularisation"]>) => void;
   cloreParcours: (agentId: string, data: NonNullable<Agent["finParcours"]>) => void;
-  enregistrerAvancement: (payload: Omit<Avancement, "id" | "createdAt" | "auteurId">) => void;
+  enregistrerAvancement: (
+    payload: Partial<Omit<Avancement, "id" | "createdAt" | "auteurId">> & Pick<Avancement, "agentId" | "dateEffet" | "nature">,
+  ) => void;
   updateGrille: (grille: AppState["grille"]) => void;
   saveDocument: (doc: DocumentDossier) => void;
   archiveDocument: (docId: string, motif: string) => void;
@@ -61,6 +67,22 @@ function persist(state: AppState) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
+function migrateServices<T extends { service?: string }>(rows: T[]): T[] {
+  return rows.map((r) =>
+    typeof r.service === "string" && r.service.startsWith("Direction ")
+      ? { ...r, service: `Division ${r.service.slice("Direction ".length)}` }
+      : r,
+  );
+}
+
+function migrateDivisionLabels<T extends { libelle?: string }>(rows: T[]): T[] {
+  return rows.map((r) =>
+    typeof r.libelle === "string" && r.libelle.startsWith("Direction ")
+      ? { ...r, libelle: `Division ${r.libelle.slice("Direction ".length)}` }
+      : r,
+  );
+}
+
 export function MockStoreProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [state, setState] = useState<AppState>(createSeed);
@@ -69,7 +91,14 @@ export function MockStoreProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) setState(JSON.parse(raw) as AppState);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<AppState>;
+        if (parsed.agents) parsed.agents = migrateServices(parsed.agents);
+        if (parsed.affectations) parsed.affectations = migrateServices(parsed.affectations);
+        if (parsed.courriers) parsed.courriers = migrateServices(parsed.courriers);
+        if (parsed.divisions) parsed.divisions = migrateDivisionLabels(parsed.divisions);
+        setState({ ...createSeed(), ...parsed });
+      }
       const sess = localStorage.getItem(SESSION_KEY);
       if (sess) setSession(JSON.parse(sess) as Session);
     } catch {
@@ -128,7 +157,7 @@ export function MockStoreProvider({ children }: { children: React.ReactNode }) {
     if (!compte.actif) {
       return { ok: false, error: "Ce compte est désactivé. Contactez le chef du personnel." };
     }
-    if (compte.motDePasse !== motDePasse) {
+    if (compte.motDePasse !== motDePasse && compte.passwordHash !== motDePasse) {
       const tentatives = compte.tentativesEchouees + 1;
       const verrouille =
         tentatives >= MAX_LOGIN_ATTEMPTS
@@ -195,14 +224,31 @@ export function MockStoreProvider({ children }: { children: React.ReactNode }) {
     persist(seed);
   };
 
-  const saveAgent: StoreContextValue["saveAgent"] = (agent, isNew) => {
-    if (!agent.matricule.trim() || !agent.nom.trim() || !agent.prenoms.trim()) {
+  const saveAgent: StoreContextValue["saveAgent"] = (agentPayload, isNew) => {
+    if (!agentPayload.matricule.trim() || !agentPayload.nom.trim() || !agentPayload.prenoms.trim()) {
       return { ok: false, error: "Matricule, nom et prénoms sont obligatoires." };
     }
     const duplicate = state.agents.find(
-      (a) => a.matricule.toLowerCase() === agent.matricule.toLowerCase() && a.id !== agent.id,
+      (a) => a.matricule.toLowerCase() === agentPayload.matricule.toLowerCase() && a.id !== agentPayload.id,
     );
     if (duplicate) return { ok: false, error: "Ce matricule existe déjà." };
+
+    const agent: Agent = {
+      ...agentPayload,
+      typeAgent: agentPayload.typeAgent || (agentPayload.statut as any) || "FONCTIONNAIRE",
+      statut: agentPayload.typeAgent || (agentPayload.statut as any) || "FONCTIONNAIRE",
+      etatCarriere: agentPayload.etatCarriere || (agentPayload.situation as any) || "STAGIAIRE",
+      situation: agentPayload.etatCarriere || (agentPayload.situation as any) || "STAGIAIRE",
+      nbreEnfant: agentPayload.nbreEnfant ?? agentPayload.nombreEnfants ?? 0,
+      nombreEnfants: agentPayload.nbreEnfant ?? agentPayload.nombreEnfants ?? 0,
+      fonction: agentPayload.fonction || agentPayload.poste || "",
+      poste: agentPayload.poste || agentPayload.fonction || "",
+      nomPersonnePrevenir: agentPayload.nomPersonnePrevenir || "",
+      contactPersonnePrevenir: agentPayload.contactPersonnePrevenir || "",
+      indice: agentPayload.indice ?? 500,
+      estArchive: agentPayload.estArchive ?? false,
+    };
+
     commit((prev) => {
       const agents = isNew
         ? [...prev.agents, agent]
@@ -212,8 +258,9 @@ export function MockStoreProvider({ children }: { children: React.ReactNode }) {
             {
               id: uid("aff"),
               agentId: agent.id,
-              service: agent.service,
-              poste: agent.poste,
+              personneId: agent.id,
+              service: agent.service || "Division générale",
+              poste: agent.poste || agent.fonction || "Agent",
               dateDebut: agent.dateEntree,
               auteurId: currentCompte?.id ?? "cpt-systeme",
             },
@@ -225,6 +272,7 @@ export function MockStoreProvider({ children }: { children: React.ReactNode }) {
             {
               id: uid("doc"),
               agentId: agent.id,
+              personneId: agent.id,
               type: "autre" as const,
               titre: `Dossier numérique – ${agent.prenoms} ${agent.nom}`,
               archive: false,
@@ -246,6 +294,60 @@ export function MockStoreProvider({ children }: { children: React.ReactNode }) {
     return { ok: true };
   };
 
+  const saveDivision: StoreContextValue["saveDivision"] = (division, isNew) => {
+    if (!division.libelle.trim()) {
+      return { ok: false, error: "Le libellé de la division est obligatoire." };
+    }
+    const dup = state.divisions.find(
+      (d) => d.libelle.trim().toLowerCase() === division.libelle.trim().toLowerCase() && d.id !== division.id,
+    );
+    if (dup) return { ok: false, error: "Une division porte déjà ce libellé." };
+    commit((prev) => ({
+      ...prev,
+      divisions: isNew
+        ? [...prev.divisions, division]
+        : prev.divisions.map((d) => (d.id === division.id ? division : d)),
+    }));
+    audit({
+      action: isNew ? "creation_division" : "modification_division",
+      cible: division.id,
+      details: division.libelle,
+      auteurId: currentCompte?.id,
+      identifiant: currentCompte?.identifiant,
+    });
+    return { ok: true };
+  };
+
+  const saveSection: StoreContextValue["saveSection"] = (section, isNew) => {
+    if (!section.libelle.trim()) {
+      return { ok: false, error: "Le libellé de la section est obligatoire." };
+    }
+    if (!section.divisionId) {
+      return { ok: false, error: "La division de rattachement est obligatoire." };
+    }
+    const dup = state.sections.find(
+      (s) =>
+        s.divisionId === section.divisionId &&
+        s.libelle.trim().toLowerCase() === section.libelle.trim().toLowerCase() &&
+        s.id !== section.id,
+    );
+    if (dup) return { ok: false, error: "Cette division comporte déjà une section de ce libellé." };
+    commit((prev) => ({
+      ...prev,
+      sections: isNew
+        ? [...prev.sections, section]
+        : prev.sections.map((s) => (s.id === section.id ? section : s)),
+    }));
+    audit({
+      action: isNew ? "creation_section" : "modification_section",
+      cible: section.id,
+      details: section.libelle,
+      auteurId: currentCompte?.id,
+      identifiant: currentCompte?.identifiant,
+    });
+    return { ok: true };
+  };
+
   const titulariser = (agentId: string, data: NonNullable<Agent["examenTitularisation"]>) => {
     commit((prev) => ({
       ...prev,
@@ -253,7 +355,8 @@ export function MockStoreProvider({ children }: { children: React.ReactNode }) {
         a.id === agentId
           ? {
               ...a,
-              situation: "titulaire",
+              etatCarriere: "TITULAIRE",
+              situation: "TITULAIRE",
               dateTitularisation: data.date,
               examenTitularisation: data,
             }
@@ -273,7 +376,16 @@ export function MockStoreProvider({ children }: { children: React.ReactNode }) {
     commit((prev) => ({
       ...prev,
       agents: prev.agents.map((a) =>
-        a.id === agentId ? { ...a, situation: "fin_parcours", finParcours: data } : a,
+        a.id === agentId
+          ? {
+              ...a,
+              etatCarriere: "SORTI",
+              situation: "SORTI",
+              dateDepart: data.date,
+              motifDepart: data.type as any,
+              finParcours: data,
+            }
+          : a,
       ),
     }));
     audit({
@@ -287,9 +399,21 @@ export function MockStoreProvider({ children }: { children: React.ReactNode }) {
   };
 
   const enregistrerAvancement: StoreContextValue["enregistrerAvancement"] = (payload) => {
+    const targetAgent = state.agents.find((a) => a.id === payload.agentId);
     const rec: Avancement = {
       ...payload,
       id: uid("av"),
+      personneId: payload.agentId,
+      ancCategorie: payload.ancCategorie || payload.ancienneCategorie || targetAgent?.categorie || "C",
+      nvCategorie: payload.nvCategorie || payload.nouvelleCategorie || targetAgent?.categorie || "C",
+      ancClasse: payload.ancClasse || payload.ancienneClasse || targetAgent?.classe || "CLASSE_3",
+      nvClasse: payload.nvClasse || payload.nouvelleClasse || targetAgent?.classe || "CLASSE_3",
+      ancEchelon: payload.ancEchelon || payload.ancienEchelon || targetAgent?.echelon || 1,
+      nvEchelon: payload.nvEchelon || payload.nouvelEchelon || targetAgent?.echelon || 1,
+      ancFonction: payload.ancFonction || targetAgent?.fonction || targetAgent?.poste || "",
+      nvFonction: payload.nvFonction || targetAgent?.fonction || targetAgent?.poste || "",
+      mode: payload.mode || (payload.type === "manuel" ? "MANUEL" : "AUTOMATIQUE"),
+      type: payload.type || "AUTOMATIQUE",
       createdAt: new Date().toISOString(),
       auteurId: currentCompte?.id ?? "cpt-systeme",
     };
@@ -300,17 +424,18 @@ export function MockStoreProvider({ children }: { children: React.ReactNode }) {
         a.id === payload.agentId
           ? {
               ...a,
-              categorie: payload.nouvelleCategorie,
-              classe: payload.nouvelleClasse,
-              echelon: payload.nouvelEchelon,
+              categorie: payload.nouvelleCategorie || payload.nvCategorie || a.categorie,
+              classe: payload.nouvelleClasse || payload.nvClasse || a.classe,
+              echelon: payload.nouvelEchelon || payload.nvEchelon || a.echelon,
+              dateDernierAvancement: payload.dateEffet,
             }
           : a,
       ),
     }));
     audit({
-      action: payload.type === "manuel" ? "avancement_manuel" : "avancement_automatique",
+      action: payload.type === "manuel" || payload.mode === "MANUEL" ? "avancement_manuel" : "avancement_automatique",
       cible: payload.agentId,
-      details: `${payload.nature} ${payload.ancienneCategorie}${payload.ancienneClasse}.${payload.ancienEchelon} → ${payload.nouvelleCategorie}${payload.nouvelleClasse}.${payload.nouvelEchelon}`,
+      details: `${payload.nature} ${payload.ancienneCategorie || payload.ancCategorie}${payload.ancienneClasse || payload.ancClasse}.${payload.ancienEchelon || payload.ancEchelon} → ${payload.nouvelleCategorie || payload.nvCategorie}${payload.nouvelleClasse || payload.nvClasse}.${payload.nouvelEchelon || payload.nvEchelon}`,
       justification: payload.justification,
       auteurId: currentCompte?.id,
       identifiant: currentCompte?.identifiant,
@@ -420,12 +545,22 @@ export function MockStoreProvider({ children }: { children: React.ReactNode }) {
     return { ok: true };
   };
 
-  const saveCompte: StoreContextValue["saveCompte"] = (compte, isNew) => {
-    if (!compte.identifiant.trim()) return { ok: false, error: "Identifiant obligatoire." };
+  const saveCompte: StoreContextValue["saveCompte"] = (comptePayload, isNew) => {
+    if (!comptePayload.identifiant.trim()) return { ok: false, error: "Identifiant obligatoire." };
     const dup = state.comptes.find(
-      (c) => c.identifiant.toLowerCase() === compte.identifiant.toLowerCase() && c.id !== compte.id,
+      (c) => c.identifiant.toLowerCase() === comptePayload.identifiant.toLowerCase() && c.id !== comptePayload.id,
     );
     if (dup) return { ok: false, error: "Cet identifiant est déjà utilisé." };
+
+    const compte: Compte = {
+      ...comptePayload,
+      email: comptePayload.email || `${comptePayload.identifiant}@radiolome.tg`,
+      passwordHash: comptePayload.passwordHash || comptePayload.motDePasse,
+      isActive: comptePayload.isActive ?? comptePayload.actif ?? true,
+      actif: comptePayload.actif ?? comptePayload.isActive ?? true,
+      personneId: comptePayload.personneId || comptePayload.agentId,
+    };
+
     commit((prev) => ({
       ...prev,
       comptes: isNew
@@ -448,7 +583,13 @@ export function MockStoreProvider({ children }: { children: React.ReactNode }) {
       ...prev,
       comptes: prev.comptes.map((c) =>
         c.id === compteId
-          ? { ...c, actif, motifDesactivation: actif ? undefined : motif }
+          ? {
+              ...c,
+              actif,
+              isActive: actif,
+              motifDesactivation: actif ? undefined : motif,
+              dateDesactivation: actif ? undefined : new Date().toISOString(),
+            }
           : c,
       ),
     }));
@@ -467,7 +608,15 @@ export function MockStoreProvider({ children }: { children: React.ReactNode }) {
     commit((prev) => ({
       ...prev,
       comptes: prev.comptes.map((c) =>
-        c.id === compteId ? { ...c, motDePasse: pwd, tentativesEchouees: 0, verrouilleJusqua: undefined } : c,
+        c.id === compteId
+          ? {
+              ...c,
+              motDePasse: pwd,
+              passwordHash: pwd,
+              tentativesEchouees: 0,
+              verrouilleJusqua: undefined,
+            }
+          : c,
       ),
     }));
     audit({
@@ -505,6 +654,8 @@ export function MockStoreProvider({ children }: { children: React.ReactNode }) {
     resetData,
     audit,
     saveAgent,
+    saveDivision,
+    saveSection,
     titulariser,
     cloreParcours,
     enregistrerAvancement,

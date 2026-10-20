@@ -1,32 +1,39 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ButtonLink, Card, Empty, PageHeader } from "@/components/ui";
-import { SituationBadge, StatutBadge } from "@/components/status";
+import { StatutBadge } from "@/components/status";
 import { useStore } from "@/lib/mock/store";
 import { hasPermission } from "@/lib/rbac";
-import { SERVICES, type StatutAgent } from "@/lib/types";
-import { downloadText, formatDate, fullName, toCsv } from "@/lib/utils";
+import { CLASSE_LABELS, SERVICES } from "@/lib/types";
+import { downloadText, fullName, toCsv } from "@/lib/utils";
 import { visibleAgents } from "@/lib/visibility";
 
 export default function AgentsPage() {
   const { state, currentCompte, currentAgent } = useStore();
+  const router = useRouter();
   const [q, setQ] = useState("");
-  const [statut, setStatut] = useState<"" | StatutAgent>("");
+  const [typeAgentFilter, setTypeAgentFilter] = useState<string>("");
   const [service, setService] = useState("");
   const canWrite = currentCompte ? hasPermission(currentCompte.role, "agents.write") : false;
   const canExport = currentCompte ? hasPermission(currentCompte.role, "export") : false;
 
   const rows = useMemo(() => {
     return visibleAgents(state.agents, currentCompte, currentAgent).filter((a) => {
-      const hay = `${a.nom} ${a.prenoms} ${a.matricule} ${a.poste}`.toLowerCase();
+      const hay = `${a.nom} ${a.prenoms} ${a.matricule} ${a.fonction || a.poste}`.toLowerCase();
       if (q && !hay.includes(q.toLowerCase())) return false;
-      if (statut && a.statut !== statut) return false;
+      if (typeAgentFilter) {
+        const normFilter = typeAgentFilter.toUpperCase();
+        const agentTypeNorm = String(a.typeAgent || a.statut).toUpperCase();
+        if (normFilter === "FONCTIONNAIRE" && agentTypeNorm !== "FONCTIONNAIRE") return false;
+        if (normFilter === "CONTRACTUEL" && agentTypeNorm !== "CONTRACTUEL") return false;
+        if (normFilter === "PIVOTE" && agentTypeNorm !== "PIVOTE" && agentTypeNorm !== "PIGISTE") return false;
+      }
       if (service && a.service !== service) return false;
       return true;
     });
-  }, [state.agents, currentCompte, currentAgent, q, statut, service]);
+  }, [state.agents, currentCompte, currentAgent, q, typeAgentFilter, service]);
 
   return (
     <>
@@ -42,10 +49,10 @@ export default function AgentsPage() {
                     matricule: a.matricule,
                     nom: a.nom,
                     prenoms: a.prenoms,
-                    statut: a.statut,
-                    situation: a.situation,
-                    service: a.service,
-                    poste: a.poste,
+                    typeAgent: a.typeAgent || a.statut,
+                    etatCarriere: a.etatCarriere || a.situation,
+                    service: a.service ?? "",
+                    fonction: a.fonction || a.poste || "",
                     categorie: a.categorie,
                     classe: a.classe,
                     echelon: a.echelon,
@@ -61,12 +68,12 @@ export default function AgentsPage() {
       </PageHeader>
       <Card>
         <div className="filters">
-          <input placeholder="Nom, prénom, matricule…" value={q} onChange={(e) => setQ(e.target.value)} />
-          <select value={statut} onChange={(e) => setStatut(e.target.value as "" | StatutAgent)}>
-            <option value="">Tous les statuts</option>
-            <option value="fonctionnaire">Fonctionnaire</option>
-            <option value="contractuel">Contractuel</option>
-            <option value="pigiste">Pigiste</option>
+          <input placeholder="Nom, prénom, matricule, fonction…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <select value={typeAgentFilter} onChange={(e) => setTypeAgentFilter(e.target.value)}>
+            <option value="">Tous les statuts d&apos;agent</option>
+            <option value="FONCTIONNAIRE">Fonctionnaire</option>
+            <option value="CONTRACTUEL">Contractuel</option>
+            <option value="PIVOTE">Pigiste (Pivoté)</option>
           </select>
           <select value={service} onChange={(e) => setService(e.target.value)}>
             <option value="">Tous les services</option>
@@ -84,37 +91,32 @@ export default function AgentsPage() {
                 <tr>
                   <th>Matricule</th>
                   <th>Agent</th>
-                  <th>Statut</th>
-                  <th>Situation</th>
-                  <th>Position</th>
-                  <th>Service</th>
-                  <th>Entrée</th>
+                  <th>Type Agent</th>
+                  <th>Grade & Position</th>
+                  <th>Service / Fonction</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((a) => (
-                  <tr key={a.id}>
+                  <tr
+                    key={a.id}
+                    onClick={() => router.push(`/agents/${a.id}`)}
+                    style={{ cursor: "pointer" }}
+                  >
                     <td>{a.matricule}</td>
                     <td>
-                      <Link className="link" href={`/agents/${a.id}`}>
-                        {fullName(a)}
-                      </Link>
+                      <strong>{fullName(a)}</strong>
                     </td>
                     <td>
-                      <StatutBadge value={a.statut} />
+                      <StatutBadge value={a.typeAgent || a.statut} />
                     </td>
                     <td>
-                      <SituationBadge value={a.situation} />
+                      Cat. {a.categorie} · {CLASSE_LABELS[a.classe] ?? a.classe} · Éch. {a.echelon}
                     </td>
                     <td>
-                      {a.categorie}
-                      {a.classe}.{a.echelon}
-                    </td>
-                    <td>
-                      {a.poste}
+                      {a.fonction || a.poste}
                       <div className="muted">{a.service}</div>
                     </td>
-                    <td>{formatDate(a.dateEntree)}</td>
                   </tr>
                 ))}
               </tbody>

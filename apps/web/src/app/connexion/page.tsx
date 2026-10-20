@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useStore } from "@/lib/mock/store";
 import { MOCK_PASSWORD } from "@/lib/mock/seed";
 import { Alert, Button, Field } from "@/components/ui";
+import { Bubbles } from "@/components/Bubbles";
 
 const HINTS = [
   { id: "agent.kodjo", role: "Agent" },
@@ -35,31 +36,28 @@ export default function LoginPage() {
   return (
     <div className="login-page">
       <section className="login-hero">
-        <div>
-          <p className="muted" style={{ color: "#dcefe3" }}>
-            République togolaise · Radio Lomé
-          </p>
-          <h2>Gestion administrative et suivi des agents</h2>
-          <p style={{ marginTop: 16, maxWidth: 480, opacity: 0.9 }}>
-            Dossiers numériques, avancements, courriers du ministère, congés et tableaux de bord
-            selon le profil.
-          </p>
-        </div>
-        <p style={{ opacity: 0.8 }}>Gespers · version 1.0 · données de démonstration</p>
+        <Bubbles />
       </section>
       <section className="login-panel">
         <form className="login-card" onSubmit={onSubmit}>
-          <div className="brand" style={{ border: 0, padding: 0 }}>
-            <div className="brand-mark">RL</div>
-            <div>
-              <h1 style={{ color: "var(--ink)" }}>Connexion</h1>
-              <p style={{ color: "var(--muted)" }}>Identifiant et mot de passe</p>
-            </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 8 }}>
+            <h1 style={{ color: "var(--navy)", fontSize: "24px" }}>Connexion Gespers</h1>
+            <p style={{ color: "var(--muted)", fontSize: "14px" }}>
+              Saisissez vos identifiants pour accéder à votre espace
+            </p>
           </div>
+
           {error ? <Alert type="error">{error}</Alert> : null}
+
           <Field label="Identifiant">
-            <input value={identifiant} onChange={(e) => setIdentifiant(e.target.value)} required />
+            <input
+              value={identifiant}
+              onChange={(e) => setIdentifiant(e.target.value)}
+              placeholder="ex: chef.personnel"
+              required
+            />
           </Field>
+
           <Field label="Mot de passe">
             <input
               type="password"
@@ -68,10 +66,16 @@ export default function LoginPage() {
               required
             />
           </Field>
-          <Button type="submit">Se connecter</Button>
+
+          <Button type="submit" style={{ marginTop: 6, padding: "12px" }}>
+            Se connecter au portail
+          </Button>
+
           <div className="accounts-hint">
-            <strong>Comptes de démonstration</strong>
-            <span>Mot de passe commun : {MOCK_PASSWORD}</span>
+            <strong>Comptes de démonstration rapide :</strong>
+            <span style={{ fontSize: "11px", color: "var(--muted)" }}>
+              Mot de passe générique : <code>{MOCK_PASSWORD}</code>
+            </span>
             {HINTS.map((h) => (
               <button
                 type="button"
@@ -82,7 +86,7 @@ export default function LoginPage() {
                   setError("");
                 }}
               >
-                {h.id} — {h.role}
+                <strong>{h.id}</strong> — {h.role}
               </button>
             ))}
           </div>

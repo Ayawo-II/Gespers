@@ -72,22 +72,22 @@ export function nextEchelonDate(agent: Agent, grille: GrilleAvancement, avanceme
 }
 
 export function isEligibleEchelon(agent: Agent, grille: GrilleAvancement, avancements: { agentId: string; dateEffet: string }[]) {
-  if (agent.situation === "fin_parcours") return false;
+  if (agent.etatCarriere === "SORTI" || agent.situation === "SORTI" || agent.situation === "fin_parcours") return false;
   const lastEch = grille.echelons[grille.echelons.length - 1];
-  if (agent.echelon === lastEch) return false;
+  if (String(agent.echelon) === String(lastEch)) return false;
   return nextEchelonDate(agent, grille, avancements) <= todayIso();
 }
 
 export function isEligibleClasse(agent: Agent, grille: GrilleAvancement, avancements: { agentId: string; dateEffet: string }[]) {
-  if (agent.situation === "fin_parcours") return false;
+  if (agent.etatCarriere === "SORTI" || agent.situation === "SORTI" || agent.situation === "fin_parcours") return false;
   const lastEch = grille.echelons[grille.echelons.length - 1];
   const lastCl = grille.classes[grille.classes.length - 1];
-  if (agent.echelon !== lastEch) return false;
+  if (String(agent.echelon) !== String(lastEch)) return false;
   if (agent.classe === lastCl) return false;
   return addMonths(lastAvancementDate(agent, avancements), grille.dureeClasseMois) <= todayIso();
 }
 
-export function nextValue(list: string[], current: string) {
+export function nextValue<T = string>(list: T[], current: T): T {
   const i = list.indexOf(current);
   return i >= 0 && i < list.length - 1 ? list[i + 1] : current;
 }

@@ -92,10 +92,10 @@ export default function RecherchePage() {
                       </Link>
                     </td>
                     <td>
-                      <StatutBadge value={a.statut} />
+                      <StatutBadge value={a.statut ?? a.typeAgent} />
                     </td>
                     <td>
-                      <SituationBadge value={a.situation} />
+                      <SituationBadge value={a.situation ?? a.etatCarriere} />
                     </td>
                     <td>
                       {a.poste}

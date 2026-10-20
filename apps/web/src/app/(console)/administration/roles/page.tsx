@@ -27,6 +27,8 @@ const PERM_LABELS: Record<Permission, string> = {
   "comptes.manage": "Gestion des comptes",
   "roles.manage": "Gestion des rôles",
   "audit.read": "Journal d'audit",
+  "organisation.read": "Consultation de l'organigramme",
+  "organisation.write": "Gestion de l'organigramme",
   export: "Export CSV",
 };
 

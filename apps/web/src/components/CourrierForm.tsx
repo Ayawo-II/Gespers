@@ -103,8 +103,16 @@ export function CourrierForm({ initial, isNew }: { initial?: Courrier; isNew: bo
       <Field label="Résumé">
         <textarea value={form.resume} onChange={(e) => set("resume", e.target.value)} />
       </Field>
-      <Field label="Pièce jointe (nom de fichier, optionnel)">
-        <input value={form.pieceJointe ?? ""} onChange={(e) => set("pieceJointe", e.target.value || undefined)} />
+      <Field label="Pièce jointe" hint="Simulation : aucun envoi serveur">
+        <input
+          type="file"
+          onChange={(e) => set("pieceJointe", e.target.files?.[0]?.name || undefined)}
+        />
+        {form.pieceJointe ? (
+          <span style={{ fontSize: 12 }}>
+            Fichier sélectionné : <code>{form.pieceJointe}</code>
+          </span>
+        ) : null}
       </Field>
       {canWrite ? <Button type="submit">{isNew ? "Enregistrer" : "Mettre à jour"}</Button> : null}
     </form>
