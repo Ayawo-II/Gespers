@@ -24,10 +24,20 @@ import type {
 } from "@/lib/types";
 import { congeOverlap, uid } from "@/lib/utils";
 
-const STORAGE_KEY = "gespers-radiolome-v1";
+const STORAGE_KEY = "gespers-radiolome-v2";
 const SESSION_KEY = "gespers-session-v1";
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCK_MINUTES = 15;
+
+/** Alias d'identifiants de démonstration acceptés à la connexion. */
+const LOGIN_ALIASES: Record<string, string> = {
+  "chef.division": "chef.tech",
+  "chef.div": "chef.tech",
+  "chef.section": "chef.ama",
+  "chef.sec": "chef.ama",
+  "agent": "agent.kodjo",
+  "dg": "dg.amouzou",
+};
 
 type Session = { compteId: string };
 
@@ -37,7 +47,7 @@ type StoreContextValue = {
   session: Session | null;
   currentCompte: Compte | null;
   currentAgent: Agent | null;
-  login: (identifiant: string, motDePasse: string) => { ok: true } | { ok: false; error: string };
+  login: (identifiant: string, motDePasse: string) => { ok: true; role: Role } | { ok: false; error: string };
   logout: () => void;
   resetData: () => void;
   audit: (entry: Omit<EntreeAudit, "id" | "date">) => void;
@@ -83,6 +93,26 @@ function migrateDivisionLabels<T extends { libelle?: string }>(rows: T[]): T[] {
   );
 }
 
+/**
+ * Réconcilie les données persistées avec le jeu de démonstration : les lignes
+ * sauvegardées sont conservées (elles priment), les lignes du seed absentes
+ * de la sauvegarde sont réinjectées, et les champs ajoutés par le seed
+ * complètent les lignes existantes. Évite qu'un ancien cache local masque un
+ * compte de démonstration ou un agent nouvellement ajouté.
+ */
+function reconcile<T extends { id: string }>(seed: T[], stored: T[] | undefined): T[] {
+  if (!stored) return seed;
+  const storedById = new Map(stored.map((r) => [r.id, r]));
+  const restored = seed
+    .filter((r) => !storedById.has(r.id))
+    .map((r) => ({ ...r }));
+  const merged = stored.map((r) => {
+    const seedRow = seed.find((s) => s.id === r.id);
+    return seedRow ? { ...seedRow, ...r } : r;
+  });
+  return [...merged, ...restored];
+}
+
 export function MockStoreProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [state, setState] = useState<AppState>(createSeed);
@@ -97,7 +127,20 @@ export function MockStoreProvider({ children }: { children: React.ReactNode }) {
         if (parsed.affectations) parsed.affectations = migrateServices(parsed.affectations);
         if (parsed.courriers) parsed.courriers = migrateServices(parsed.courriers);
         if (parsed.divisions) parsed.divisions = migrateDivisionLabels(parsed.divisions);
-        setState({ ...createSeed(), ...parsed });
+        const seed = createSeed();
+        setState({
+          ...seed,
+          ...parsed,
+          divisions: reconcile(seed.divisions, parsed.divisions),
+          sections: reconcile(seed.sections, parsed.sections),
+          agents: reconcile(seed.agents, parsed.agents),
+          affectations: reconcile(seed.affectations, parsed.affectations),
+          avancements: reconcile(seed.avancements, parsed.avancements),
+          documents: reconcile(seed.documents, parsed.documents),
+          courriers: reconcile(seed.courriers, parsed.courriers),
+          conges: reconcile(seed.conges, parsed.conges),
+          comptes: reconcile(seed.comptes, parsed.comptes),
+        });
       }
       const sess = localStorage.getItem(SESSION_KEY);
       if (sess) setSession(JSON.parse(sess) as Session);
@@ -143,7 +186,12 @@ export function MockStoreProvider({ children }: { children: React.ReactNode }) {
 
   const login: StoreContextValue["login"] = (identifiant, motDePasse) => {
     const id = identifiant.trim().toLowerCase();
-    const compte = state.comptes.find((c) => c.identifiant.toLowerCase() === id && c.identifiant !== "systeme");
+    const cible = LOGIN_ALIASES[id] ?? id;
+    const compte = state.comptes.find(
+      (c) =>
+        c.identifiant !== "systeme" &&
+        (c.identifiant.toLowerCase() === cible || (c.email ?? "").toLowerCase() === id),
+    );
     if (!compte) {
       audit({ action: "connexion_echouee", cible: identifiant, details: "Identifiant inconnu", identifiant });
       return { ok: false, error: "Identifiant ou mot de passe incorrect." };
@@ -201,7 +249,7 @@ export function MockStoreProvider({ children }: { children: React.ReactNode }) {
       auteurId: compte.id,
       identifiant: compte.identifiant,
     });
-    return { ok: true };
+    return { ok: true, role: compte.role };
   };
 
   const logout = () => {

@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/lib/mock/store";
+import { landingPathForRole } from "@/lib/rbac";
 import { MOCK_PASSWORD } from "@/lib/mock/seed";
 import { Alert, Button, Field } from "@/components/ui";
 import { Bubbles } from "@/components/Bubbles";
@@ -10,27 +11,31 @@ import { Bubbles } from "@/components/Bubbles";
 const HINTS = [
   { id: "agent.kodjo", role: "Agent" },
   { id: "chef.ama", role: "Cheffe de section" },
+  { id: "chef.tech", role: "Chef de division" },
   { id: "rh.adjovi", role: "Responsable RH" },
   { id: "chef.personnel", role: "Chef du personnel" },
   { id: "dg.amouzou", role: "Directeur général" },
 ];
 
 export default function LoginPage() {
-  const { ready, session, login } = useStore();
+  const { ready, session, currentCompte, login, resetData } = useStore();
   const router = useRouter();
   const [identifiant, setIdentifiant] = useState("chef.personnel");
   const [motDePasse, setMotDePasse] = useState(MOCK_PASSWORD);
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
 
   useEffect(() => {
-    if (ready && session) router.replace("/tableau-de-bord");
-  }, [ready, session, router]);
+    if (ready && session && currentCompte) {
+      router.replace(landingPathForRole(currentCompte.role));
+    }
+  }, [ready, session, currentCompte, router]);
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     const res = login(identifiant, motDePasse);
     if (!res.ok) setError(res.error);
-    else router.push("/tableau-de-bord");
+    else router.push(landingPathForRole(res.role));
   }
 
   return (
@@ -48,6 +53,7 @@ export default function LoginPage() {
           </div>
 
           {error ? <Alert type="error">{error}</Alert> : null}
+          {info ? <Alert>{info}</Alert> : null}
 
           <Field label="Identifiant">
             <input
@@ -89,6 +95,17 @@ export default function LoginPage() {
                 <strong>{h.id}</strong> — {h.role}
               </button>
             ))}
+            <button
+              type="button"
+              onClick={() => {
+                resetData();
+                setError("");
+                setInfo("Données de démonstration rechargées.");
+              }}
+              style={{ textDecoration: "underline" }}
+            >
+              Réinitialiser les données de démonstration
+            </button>
           </div>
         </form>
       </section>

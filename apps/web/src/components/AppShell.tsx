@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useStore } from "@/lib/mock/store";
 import { useHeader } from "@/lib/header-context";
-import { canAccessPath, hasPermission, visibleInNav, type Permission } from "@/lib/rbac";
+import { canAccessPath, hasPermission, landingPathForRole, visibleInNav, type Permission } from "@/lib/rbac";
 import { ROLE_LABELS, type Agent } from "@/lib/types";
 import { fullName } from "@/lib/utils";
 import { Loading } from "@/components/ui";
@@ -33,11 +33,11 @@ const NAV: {
   perm?: Permission;
   group: string;
 }[] = [
+  { href: "/ma-section", label: "Ma section", Icon: IconUsers, group: "Mon périmètre" },
+  { href: "/ma-division", label: "Ma division", Icon: IconBuilding, group: "Mon périmètre" },
   { href: "/tableau-de-bord", label: "Tableau de bord", Icon: IconDashboard, group: "Suivi" },
   { href: "/moi", label: "Moi", Icon: IconUser, group: "Suivi" },
   { href: "/agents", label: "Agents", Icon: IconUsers, perm: "agents.read.team", group: "Personnel" },
-  { href: "/ma-section", label: "Ma section", Icon: IconUsers, group: "Mon périmètre" },
-  { href: "/ma-division", label: "Ma division", Icon: IconBuilding, group: "Mon périmètre" },
   { href: "/divisions", label: "Divisions", Icon: IconBuilding, perm: "organisation.read", group: "Personnel" },
   { href: "/recherche", label: "Recherche", Icon: IconSearch, perm: "agents.read.team", group: "Personnel" },
   { href: "/courriers", label: "Courriers du ministère", Icon: IconMail, perm: "courriers.read", group: "Administration" },
@@ -154,8 +154,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (!ready) return;
     if (!session || !currentCompte) {
       router.replace("/connexion");
+      return;
     }
-  }, [ready, session, currentCompte, router]);
+    if (!canAccessPath(currentCompte.role, pathname)) {
+      router.replace(landingPathForRole(currentCompte.role));
+    }
+  }, [ready, session, currentCompte, pathname, router]);
 
   const role = currentCompte?.role;
   const allowed = role ? canAccessPath(role, pathname) : false;

@@ -5,11 +5,7 @@ import { Card, PageHeader } from "@/components/ui";
 import { PieChart } from "@/components/charts";
 import { SituationBadge, StatutBadge } from "@/components/status";
 import { useStore } from "@/lib/mock/store";
-import {
-  CLASSE_LABELS,
-  CONGE_LABELS,
-  ROLE_LABELS,
-} from "@/lib/types";
+import { CLASSE_LABELS, ROLE_LABELS } from "@/lib/types";
 import { formatDate, fullName, isEligibleClasse, isEligibleEchelon, nextEchelonDate } from "@/lib/utils";
 import { agentsDeMaDivision, agentsDeMaSection } from "@/lib/visibility";
 
@@ -55,7 +51,6 @@ export default function DashboardPage() {
         ? agentsDeMaDivision(state.agents, currentAgent)
         : state.agents;
 
-  const perimetreIds = new Set(perimetre.map((a) => a.id));
   const perimetreLabel = isAgent
     ? "vous concernant"
     : isChefSection
@@ -75,11 +70,6 @@ export default function DashboardPage() {
   ).length;
   const enCoursTitul = titulaires + stagiaires;
   const tauxTitularisation = enCoursTitul ? Math.round((titulaires / enCoursTitul) * 100) : 0;
-
-  const congesPerimetre = state.conges.filter((c) => perimetreIds.has(c.agentId));
-  const congesEnCours = congesPerimetre.filter(
-    (c) => c.dateDebut <= aujourdHui && c.dateFin >= aujourdHui,
-  );
 
   const avancementsProches = perimetre
     .filter((a) => estActif(a) && estFonctionnaire(a) && estTitulaire(a))
@@ -185,13 +175,18 @@ export default function DashboardPage() {
         </Card>
 
         <Card className="kpi">
-          <span>{isAgent ? "Mes congés enregistrés" : "Congés en cours"}</span>
-          <strong>{isAgent ? congesPerimetre.length : congesEnCours.length}</strong>
-          <em>
-            {isAgent
-              ? "Historique personnel"
-              : `${congesPerimetre.length} congé(s) au total`}
-          </em>
+          <span>{isAgent ? "Prochain avancement" : "Agents actifs"}</span>
+          {isAgent ? (
+            <>
+              <strong>{formatDate(nextEchelonDate(currentAgent, state.grille, state.avancements))}</strong>
+              <em>Règle : {state.grille.dureeEchelonMois} mois</em>
+            </>
+          ) : (
+            <>
+              <strong>{effectifActif}</strong>
+              <em>sur {effectif} agents</em>
+            </>
+          )}
         </Card>
 
         <Card className="kpi">
@@ -338,48 +333,6 @@ export default function DashboardPage() {
               </table>
             </div>
           )}
-        </Card>
-      ) : null}
-
-      {!isAgent ? (
-        <Card>
-          <h3 style={{ marginBottom: 12, color: "var(--navy)" }}>
-            Effectif {perimetreLabel} ({effectif})
-          </h3>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Agent</th>
-                  <th>Fonction</th>
-                  <th>Situation</th>
-                  <th>Congé en cours</th>
-                </tr>
-              </thead>
-              <tbody>
-                {perimetre
-                  .filter((a) => a.id !== currentAgent.id)
-                  .map((a) => {
-                    const leave = congesEnCours.find((c) => c.agentId === a.id);
-                    return (
-                      <tr key={a.id}>
-                        <td>
-                          <Link className="link" href={`/agents/${a.id}`}>
-                            {fullName(a)}
-                          </Link>
-                        </td>
-                        <td>{a.fonction || a.poste}</td>
-                        <td>
-                          <StatutBadge value={a.typeAgent || a.statut} />{" "}
-                          <SituationBadge value={a.etatCarriere || a.situation} />
-                        </td>
-                        <td>{leave ? CONGE_LABELS[leave.type] : "—"}</td>
-                      </tr>
-                    );
-                  })}
-              </tbody>
-            </table>
-          </div>
         </Card>
       ) : null}
     </>

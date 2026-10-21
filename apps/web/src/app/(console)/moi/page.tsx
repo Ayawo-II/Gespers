@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Card, PageHeader } from "@/components/ui";
 import { SituationBadge, StatutBadge } from "@/components/status";
 import { useStore } from "@/lib/mock/store";
+import { landingPathForRole } from "@/lib/rbac";
 import {
   CLASSE_LABELS,
   CONGE_LABELS,
@@ -433,8 +434,8 @@ export default function MoiPage() {
       <div style={{ marginTop: 12 }}>
         <p className="muted" style={{ fontSize: 13 }}>
           Pour tout besoin de mise à jour de vos informations personnelles ou professionnelles, veuillez adresser une demande au <strong>Service du Personnel de Radio Lomé</strong>.{" "}
-          <Link className="link" href="/tableau-de-bord">
-            Retour au tableau de bord →
+          <Link className="link" href={landingPathForRole(currentCompte.role)}>
+            Retour à mon espace →
           </Link>
         </p>
       </div>

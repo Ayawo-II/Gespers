@@ -1,9 +1,7 @@
 ﻿import type { Role } from "@/lib/types";
 
 export type Permission =
-  | "dashboard.self"
-  | "dashboard.team"
-  | "dashboard.org"
+  | "dashboard.read"
   | "agents.read.all"
   | "agents.read.team"
   | "agents.read.self"
@@ -26,26 +24,11 @@ export type Permission =
 
 export const ROLE_PERMS: Record<string, Permission[]> = {
   // --- Roles Prisma officiels (majuscules) ---
-  AGENT: ["dashboard.self", "agents.read.self", "conges.read.self"],
-  CHEF_SECTION: [
-    "dashboard.self",
-    "dashboard.team",
-    "agents.read.self",
-    "agents.read.team",
-    "conges.read.self",
-    "conges.read.team",
-  ],
-  CHEF_DIVISION: [
-    "dashboard.self",
-    "dashboard.team",
-    "agents.read.self",
-    "agents.read.team",
-    "conges.read.self",
-    "conges.read.team",
-  ],
+  AGENT: ["agents.read.self", "conges.read.self"],
+  CHEF_SECTION: ["agents.read.self", "agents.read.team", "conges.read.self", "conges.read.team"],
+  CHEF_DIVISION: ["agents.read.self", "agents.read.team", "conges.read.self", "conges.read.team"],
   RESPONSABLE_RH: [
-    "dashboard.self",
-    "dashboard.org",
+    "dashboard.read",
     "agents.read.all",
     "agents.read.self",
     "agents.write",
@@ -65,8 +48,7 @@ export const ROLE_PERMS: Record<string, Permission[]> = {
     "export",
   ],
   CHEF_PERSONNEL: [
-    "dashboard.self",
-    "dashboard.org",
+    "dashboard.read",
     "agents.read.all",
     "agents.read.self",
     "agents.write",
@@ -86,8 +68,7 @@ export const ROLE_PERMS: Record<string, Permission[]> = {
     "export",
   ],
   DG: [
-    "dashboard.self",
-    "dashboard.org",
+    "dashboard.read",
     "agents.read.all",
     "agents.read.self",
     "avancements.read",
@@ -99,18 +80,15 @@ export const ROLE_PERMS: Record<string, Permission[]> = {
   ],
 
   // --- Retro-compatibilitÃ© aliases minuscules ---
-  agent: ["dashboard.self", "agents.read.self", "conges.read.self"],
+  agent: ["agents.read.self", "conges.read.self"],
   chef: [
-    "dashboard.self",
-    "dashboard.team",
     "agents.read.self",
     "agents.read.team",
     "conges.read.self",
     "conges.read.team",
   ],
   rh: [
-    "dashboard.self",
-    "dashboard.org",
+    "dashboard.read",
     "agents.read.all",
     "agents.read.self",
     "agents.write",
@@ -130,8 +108,7 @@ export const ROLE_PERMS: Record<string, Permission[]> = {
     "export",
   ],
   chef_personnel: [
-    "dashboard.self",
-    "dashboard.org",
+    "dashboard.read",
     "agents.read.all",
     "agents.read.self",
     "agents.write",
@@ -151,8 +128,7 @@ export const ROLE_PERMS: Record<string, Permission[]> = {
     "export",
   ],
   dg: [
-    "dashboard.self",
-    "dashboard.org",
+    "dashboard.read",
     "agents.read.all",
     "agents.read.self",
     "avancements.read",
@@ -169,13 +145,25 @@ export function hasPermission(role: Role | string, perm: Permission) {
   return perms ? perms.includes(perm) : false;
 }
 
+/**
+ * Page d'accueil par rôle. Le tableau de bord est réservé aux rôles
+ * institutionnels (RH, chef du personnel, DG) : les autres rôles sont
+ * redirigés vers leur espace métier.
+ */
+export function landingPathForRole(role: Role | string): string {
+  if (role === "AGENT" || role === "agent") return "/moi";
+  if (role === "CHEF_SECTION" || role === "chef") return "/ma-section";
+  if (role === "CHEF_DIVISION") return "/ma-division";
+  return "/tableau-de-bord";
+}
+
 /** Navigation limitÃ©e par rÃ´le : si une liste est dÃ©finie, le rÃ´le ne voit que ces rubriques. */
 export const NAV_PATHS_BY_ROLE: Partial<Record<string, readonly string[]>> = {
-  AGENT: ["/tableau-de-bord", "/moi", "/mon-dossier"],
-  agent: ["/tableau-de-bord", "/moi", "/mon-dossier"],
-  CHEF_SECTION: ["/tableau-de-bord", "/moi", "/mon-dossier", "/ma-section"],
-  chef: ["/tableau-de-bord", "/moi", "/mon-dossier", "/ma-section"],
-  CHEF_DIVISION: ["/tableau-de-bord", "/moi", "/mon-dossier", "/ma-division"],
+  AGENT: ["/moi", "/mon-dossier"],
+  agent: ["/moi", "/mon-dossier"],
+  CHEF_SECTION: ["/moi", "/mon-dossier", "/ma-section"],
+  chef: ["/moi", "/mon-dossier", "/ma-section"],
+  CHEF_DIVISION: ["/moi", "/mon-dossier", "/ma-division"],
   DG: ["/tableau-de-bord", "/moi", "/mon-dossier", "/agents", "/divisions", "/courriers"],
   dg: ["/tableau-de-bord", "/moi", "/mon-dossier", "/agents", "/divisions", "/courriers"],
   RESPONSABLE_RH: [
@@ -224,7 +212,7 @@ function matchesPathList(pathname: string, list: readonly string[]) {
 export function canAccessPath(role: Role | string, pathname: string): boolean {
   const scoped = NAV_PATHS_BY_ROLE[role];
   if (scoped && !matchesPathList(pathname, scoped)) return false;
-  if (pathname.startsWith("/tableau-de-bord")) return true;
+  if (pathname.startsWith("/tableau-de-bord")) return hasPermission(role, "dashboard.read");
   if (pathname.startsWith("/moi") || pathname.startsWith("/mon-dossier")) return true;
   if (pathname.startsWith("/ma-section")) {
     return role === "CHEF_SECTION" || role === "chef";

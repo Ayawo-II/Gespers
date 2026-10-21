@@ -8,9 +8,7 @@ import { ROLE_LABELS, type Role } from "@/lib/types";
 import { fullName } from "@/lib/utils";
 
 const PERM_LABELS: Record<Permission, string> = {
-  "dashboard.self": "Tableau de bord personnel",
-  "dashboard.team": "Tableau d'équipe",
-  "dashboard.org": "Tableau institutionnel",
+  "dashboard.read": "Tableau de bord institutionnel",
   "agents.read.all": "Lecture de tous les agents",
   "agents.read.team": "Lecture de l'équipe",
   "agents.read.self": "Lecture de son dossier",
