@@ -43,7 +43,7 @@ enum Classe {
 enum TypeAgent {
   FONCTIONNAIRE
   CONTRACTUEL
-  PIVOTE
+  PIGISTE
 }
 
 enum EtatCarriere {
@@ -74,6 +74,15 @@ enum MotifDepart {
   REVOCATION
   DECES
   AUTRE
+}
+
+enum TypeConge {
+  ANNUEL
+  MALADIE
+  MATERNITE
+  PATERNITE
+  PERMISSION_EXCEPTIONNELLE
+  SANS_SOLDE
 }
 
 // --- Agents et organisation ---
@@ -122,10 +131,10 @@ model Personnes {
   diplome                 String
   fonction                String
   matricule               String        @unique
-  categorie               Categorie
-  classe                  Classe
-  echelon                 Int
-  indice                  Int
+  categorie               Categorie?
+  classe                  Classe?
+  echelon                 Int?
+  indice                  Int?
   typeAgent               TypeAgent
   etatCarriere            EtatCarriere
   dateEntree              DateTime      @db.Date
@@ -142,7 +151,9 @@ model Personnes {
   affectations   Affectation[]
   historique     Mods[]
   titularisation Titularisation?
-  documents      Documents[]
+  documents      DocumentPersonne[]
+  utilisateur Utilisateur?
+  conges       Conge[]
 }
 
 // --- Carrière ---
@@ -196,23 +207,32 @@ model Documents {
   id           Int         @id @default(autoincrement())
   lien         String
   titre        String
-  description  String
-  numeroOrdre  String
-  reference    String
-  expediteur   String
+  description  String?
+  numeroOrdre  String?
+  reference    String?
+  expediteur   String?
   dateDocument DateTime    @db.Date
   dateAjout    DateTime    @db.Date
-  personneId   Int
-  personne     Personnes   @relation(fields: [personneId], references: [id])
+  dansRegistreGeneral Boolean     @default(false)
   typeDocId    Int
+  personnes    DocumentPersonne[]
   typeDoc      TypeDoc     @relation(fields: [typeDocId], references: [id])
   ajouteParId  Int
   ajoutePar    Utilisateur @relation("DocumentsAjoutesPar", fields: [ajouteParId], references: [id])
   modsJustifie Mods?       @relation("PieceJustificative")
 }
 
-// --- Comptes ---
-// JournalAudit : volontairement absent (n'existait pas dans le schéma ; ne pas l'ajouter).
+model DocumentPersonne {
+  documentId Int
+  personneId Int
+  document   Documents @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  personne   Personnes @relation(fields: [personneId], references: [id])
+
+  @@id([documentId, personneId])
+  @@map("document_personne")
+}
+
+// --- Comptes, congés et audit ---
 
 model Utilisateur {
   id                 Int          @id @default(autoincrement())
@@ -222,6 +242,70 @@ model Utilisateur {
   role               Role
   dateDesactivation  DateTime?    @db.Date
   motifDesactivation String?
+
+  personneId Int @unique
+  personne Personnes @relation(fields: [personneId], references: [id])
   modifications      Mods[]
   documentsAjoutes   Documents[]  @relation("DocumentsAjoutesPar")
+  conges             Conge[]
+  entreesAudit       JournalAudit[]
+  sessions           Session[]
+}
+
+model Session {
+  id            Int      @id @default(autoincrement())
+  tokenHash     String   @unique
+  utilisateurId Int
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
+
+  utilisateur Utilisateur @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
+
+  @@index([utilisateurId])
+  @@index([expiresAt])
+}
+
+model Conge {
+  id                Int       @id @default(autoincrement())
+  personneId        Int
+  type              TypeConge
+  dateDebut         DateTime  @db.Date
+  dateFin            DateTime  @db.Date
+  dureeJours        Int
+  referenceDecision String
+  pieceJointe       String?
+  auteurId          Int
+  createdAt         DateTime  @default(now())
+
+  personne Personnes   @relation(fields: [personneId], references: [id], onDelete: Restrict)
+  auteur   Utilisateur @relation(fields: [auteurId], references: [id], onDelete: Restrict)
+
+  @@index([personneId, dateDebut, dateFin])
+  @@index([auteurId])
+}
+
+model JournalAudit {
+  id            Int      @id @default(autoincrement())
+  date          DateTime @default(now())
+  auteurId      Int?
+  identifiant   String?
+  action        String
+  cible         String
+  details       String
+  justification String?
+
+  auteur Utilisateur? @relation(fields: [auteurId], references: [id], onDelete: SetNull)
+
+  @@index([date])
+  @@index([auteurId, date])
+}
+
+model GrilleAvancement {
+  id                Int        @id @default(1)
+  categories        Categorie[] @default([A1, A2, A3, B, C, D])
+  classes           Classe[]    @default([CLASSE_3, CLASSE_2, CLASSE_1, CLASSE_PRINCIPALE, EXCEPTIONNELLE])
+  echelons          String[]    @default(["1", "2", "3", "4", "5", "6"])
+  dureeEchelonMois  Int         @default(24)
+  dureeClasseMois   Int         @default(36)
+  updatedAt         DateTime    @updatedAt
 }
