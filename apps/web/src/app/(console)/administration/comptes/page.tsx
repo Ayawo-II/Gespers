@@ -84,7 +84,7 @@ export default function ComptesPage() {
                         {c.actif ? "Actif" : "Inactif"}
                         {c.motifDesactivation ? <div className="muted">{c.motifDesactivation}</div> : null}
                         {c.verrouilleJusqua ? (
-                          <div className="muted">Verrouillé jusqu'à {new Date(c.verrouilleJusqua).toLocaleString("fr-TG")}</div>
+                          <div className="muted">Verrouillé jusqu’à {new Date(c.verrouilleJusqua).toLocaleString("fr-TG")}</div>
                         ) : null}
                       </td>
                       <td>

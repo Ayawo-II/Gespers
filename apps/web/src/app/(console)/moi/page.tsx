@@ -218,7 +218,7 @@ export default function MoiPage() {
                 <p style={{ fontWeight: 700, marginTop: 4 }}>{currentAgent.matricule}</p>
               </div>
               <div>
-                <span className="muted">Type d'Agent (typeAgent) :</span>
+                <span className="muted">Type d’Agent (typeAgent) :</span>
                 <p style={{ marginTop: 4 }}>
                   <StatutBadge value={currentAgent.typeAgent || currentAgent.statut} />
                 </p>
@@ -244,7 +244,7 @@ export default function MoiPage() {
                 <p style={{ fontWeight: 700, marginTop: 4 }}>{currentAgent.service}</p>
               </div>
               <div>
-                <span className="muted">Date d'entrée en service :</span>
+                <span className="muted">Date d’entrée en service :</span>
                 <p style={{ fontWeight: 600, marginTop: 4 }}>{formatDate(currentAgent.dateEntree)}</p>
               </div>
               <div>
@@ -271,7 +271,7 @@ export default function MoiPage() {
                 <p style={{ fontWeight: 700, marginTop: 4 }}>{currentAgent.diplome}</p>
               </div>
               <div>
-                <span className="muted">Filière / Formation d'origine :</span>
+                <span className="muted">Filière / Formation d’origine :</span>
                 <p style={{ fontWeight: 600, marginTop: 4 }}>{currentAgent.formation || "—"}</p>
               </div>
             </div>
@@ -281,7 +281,7 @@ export default function MoiPage() {
           <Card>
             <h3 style={{ color: "var(--navy)", marginBottom: 16 }}>Historique des Avancements (Mods) & Affectations</h3>
             {avs.length === 0 && affs.length === 0 ? (
-              <p className="muted">Aucun historique d'avancement ou d'affectation enregistré.</p>
+              <p className="muted">Aucun historique d’avancement ou d’affectation enregistré.</p>
             ) : (
               <div className="timeline">
                 {avs.map((a) => (

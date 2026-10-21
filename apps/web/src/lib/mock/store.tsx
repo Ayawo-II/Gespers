@@ -6,7 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useState,
+  useSyncExternalStore,
 } from "react";
 import { createSeed, MOCK_PASSWORD } from "@/lib/mock/seed";
 import type {
@@ -113,49 +113,88 @@ function reconcile<T extends { id: string }>(seed: T[], stored: T[] | undefined)
   return [...merged, ...restored];
 }
 
+/**
+ * Magasin externe (localStorage) exposé via `useSyncExternalStore`.
+ * Le rendu serveur utilise la graine de démonstration ; le navigateur
+ * recharge la sauvegarde locale après l'hydratation, sans setState dans un effet.
+ */
+type StoreSnapshot = {
+  state: AppState;
+  session: Session | null;
+  ready: boolean;
+};
+
+const serverSnapshot: StoreSnapshot = { state: createSeed(), session: null, ready: false };
+let snapshot: StoreSnapshot = serverSnapshot;
+const listeners = new Set<() => void>();
+
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+function getSnapshot() {
+  return snapshot;
+}
+
+function getServerSnapshot() {
+  return serverSnapshot;
+}
+
+function updateSnapshot(next: Partial<StoreSnapshot>) {
+  snapshot = { ...snapshot, ...next };
+  for (const listener of listeners) listener();
+}
+
+/** Relit la sauvegarde locale et la réconcilie avec le jeu de démonstration. */
+function chargerPersistance(): { state: AppState; session: Session | null } {
+  let state = snapshot.state;
+  let session: Session | null = null;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<AppState>;
+      if (parsed.agents) parsed.agents = migrateServices(parsed.agents);
+      if (parsed.affectations) parsed.affectations = migrateServices(parsed.affectations);
+      if (parsed.courriers) parsed.courriers = migrateServices(parsed.courriers);
+      if (parsed.divisions) parsed.divisions = migrateDivisionLabels(parsed.divisions);
+      const seed = createSeed();
+      state = {
+        ...seed,
+        ...parsed,
+        divisions: reconcile(seed.divisions, parsed.divisions),
+        sections: reconcile(seed.sections, parsed.sections),
+        agents: reconcile(seed.agents, parsed.agents),
+        affectations: reconcile(seed.affectations, parsed.affectations),
+        avancements: reconcile(seed.avancements, parsed.avancements),
+        documents: reconcile(seed.documents, parsed.documents),
+        courriers: reconcile(seed.courriers, parsed.courriers),
+        conges: reconcile(seed.conges, parsed.conges),
+        comptes: reconcile(seed.comptes, parsed.comptes),
+      };
+    }
+    const sess = localStorage.getItem(SESSION_KEY);
+    if (sess) session = JSON.parse(sess) as Session;
+  } catch {
+    /* ignore */
+  }
+  return { state, session };
+}
+
 export function MockStoreProvider({ children }: { children: React.ReactNode }) {
-  const [ready, setReady] = useState(false);
-  const [state, setState] = useState<AppState>(createSeed);
-  const [session, setSession] = useState<Session | null>(null);
+  const { state, session, ready } = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as Partial<AppState>;
-        if (parsed.agents) parsed.agents = migrateServices(parsed.agents);
-        if (parsed.affectations) parsed.affectations = migrateServices(parsed.affectations);
-        if (parsed.courriers) parsed.courriers = migrateServices(parsed.courriers);
-        if (parsed.divisions) parsed.divisions = migrateDivisionLabels(parsed.divisions);
-        const seed = createSeed();
-        setState({
-          ...seed,
-          ...parsed,
-          divisions: reconcile(seed.divisions, parsed.divisions),
-          sections: reconcile(seed.sections, parsed.sections),
-          agents: reconcile(seed.agents, parsed.agents),
-          affectations: reconcile(seed.affectations, parsed.affectations),
-          avancements: reconcile(seed.avancements, parsed.avancements),
-          documents: reconcile(seed.documents, parsed.documents),
-          courriers: reconcile(seed.courriers, parsed.courriers),
-          conges: reconcile(seed.conges, parsed.conges),
-          comptes: reconcile(seed.comptes, parsed.comptes),
-        });
-      }
-      const sess = localStorage.getItem(SESSION_KEY);
-      if (sess) setSession(JSON.parse(sess) as Session);
-    } catch {
-      /* ignore */
-    }
-    setReady(true);
+    const persisted = chargerPersistance();
+    updateSnapshot({ state: persisted.state, session: persisted.session, ready: true });
   }, []);
 
   const commit = useCallback((updater: (prev: AppState) => AppState) => {
-    setState((prev) => {
-      const next = updater(prev);
-      persist(next);
-      return next;
-    });
+    const next = updater(snapshot.state);
+    persist(next);
+    updateSnapshot({ state: next });
   }, []);
 
   const currentCompte = useMemo(
@@ -240,7 +279,7 @@ export function MockStoreProvider({ children }: { children: React.ReactNode }) {
       ),
     }));
     const next = { compteId: compte.id };
-    setSession(next);
+    updateSnapshot({ session: next });
     localStorage.setItem(SESSION_KEY, JSON.stringify(next));
     audit({
       action: "connexion",
@@ -262,14 +301,14 @@ export function MockStoreProvider({ children }: { children: React.ReactNode }) {
         identifiant: currentCompte.identifiant,
       });
     }
-    setSession(null);
+    updateSnapshot({ session: null });
     localStorage.removeItem(SESSION_KEY);
   };
 
   const resetData = () => {
     const seed = createSeed();
-    setState(seed);
     persist(seed);
+    updateSnapshot({ state: seed });
   };
 
   const saveAgent: StoreContextValue["saveAgent"] = (agentPayload, isNew) => {
@@ -283,10 +322,10 @@ export function MockStoreProvider({ children }: { children: React.ReactNode }) {
 
     const agent: Agent = {
       ...agentPayload,
-      typeAgent: agentPayload.typeAgent || (agentPayload.statut as any) || "FONCTIONNAIRE",
-      statut: agentPayload.typeAgent || (agentPayload.statut as any) || "FONCTIONNAIRE",
-      etatCarriere: agentPayload.etatCarriere || (agentPayload.situation as any) || "STAGIAIRE",
-      situation: agentPayload.etatCarriere || (agentPayload.situation as any) || "STAGIAIRE",
+      typeAgent: agentPayload.typeAgent || agentPayload.statut || "FONCTIONNAIRE",
+      statut: agentPayload.typeAgent || agentPayload.statut || "FONCTIONNAIRE",
+      etatCarriere: agentPayload.etatCarriere || agentPayload.situation || "STAGIAIRE",
+      situation: agentPayload.etatCarriere || agentPayload.situation || "STAGIAIRE",
       nbreEnfant: agentPayload.nbreEnfant ?? agentPayload.nombreEnfants ?? 0,
       nombreEnfants: agentPayload.nbreEnfant ?? agentPayload.nombreEnfants ?? 0,
       fonction: agentPayload.fonction || agentPayload.poste || "",
@@ -430,7 +469,7 @@ export function MockStoreProvider({ children }: { children: React.ReactNode }) {
               etatCarriere: "SORTI",
               situation: "SORTI",
               dateDepart: data.date,
-              motifDepart: data.type as any,
+              motifDepart: data.type,
               finParcours: data,
             }
           : a,

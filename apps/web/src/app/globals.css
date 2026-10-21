@@ -815,30 +815,89 @@ textarea {
   pointer-events: none;
 }
 
+.bubble-slot {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
 .bubble {
   position: absolute;
-  bottom: -120px;
+  left: 0;
+  bottom: 0;
+  padding: 0;
   border-radius: 50%;
   background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.08));
   border: 1px solid rgba(255, 255, 255, 0.25);
-  animation-name: bubble-rise;
-  animation-timing-function: ease-in;
+  pointer-events: auto;
+  cursor: pointer;
+  animation-name: bubble-float;
+  animation-timing-function: ease-in-out;
   animation-iteration-count: infinite;
+  animation-direction: alternate;
 }
 
-@keyframes bubble-rise {
+.bubble:hover {
+  background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.18));
+}
+
+.bubble:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.9);
+  outline-offset: 3px;
+}
+
+/* Les bulles dérivent dans la zone, sans jamais franchir le bord bas. */
+@keyframes bubble-float {
   0% {
-    transform: translateY(0) translateX(0) scale(0.8);
-    opacity: 0;
-  }
-  10% {
-    opacity: 0.9;
-  }
-  50% {
-    transform: translateY(-45vh) translateX(24px) scale(1);
+    transform: translate(0, 0) scale(0.92);
+    opacity: 0.5;
   }
   100% {
-    transform: translateY(-100vh) translateX(-16px) scale(1.15);
+    transform: translate(var(--sway), var(--rise)) scale(1.06);
+    opacity: 0.9;
+  }
+}
+
+.bubble-ring {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  pointer-events: none;
+  animation: bubble-ring 700ms ease-out forwards;
+}
+
+@keyframes bubble-ring {
+  0% {
+    transform: scale(0.25);
+    opacity: 0.95;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+.bubble-particle {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  margin-left: -3px;
+  margin-bottom: -3px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  pointer-events: none;
+  animation: bubble-particle 700ms ease-out forwards;
+}
+
+@keyframes bubble-particle {
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--dx), var(--dy)) scale(0.2);
     opacity: 0;
   }
 }
