@@ -37,6 +37,7 @@ services:
       - "3001:3001"
     environment:
       PORT: "3001"
+      UPLOAD_DIR: /app/apps/api/uploads
       DATABASE_URL: postgresql://gespers:gespers@db:5432/gespers?schema=public
     depends_on:
       db:
@@ -46,6 +47,7 @@ services:
     volumes:
       - ./apps/api/src:/app/apps/api/src
       - ./apps/api/prisma:/app/apps/api/prisma
+      - api_uploads:/app/apps/api/uploads
 
   web:
     build:
@@ -65,5 +67,6 @@ services:
 
 volumes:
   db_data:
+  api_uploads:
   web_node_modules:
   web_next:

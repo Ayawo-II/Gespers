@@ -12,6 +12,7 @@ export interface AuthenticatedUser {
   email: string;
   role: Role;
   personneId: number;
+  mustChangePassword: boolean;
 }
 
 declare global {
@@ -59,6 +60,7 @@ export async function requireAuth(
           email: true,
           role: true,
           personneId: true,
+          mustChangePassword: true,
           isActive: true,
         },
       },
@@ -79,6 +81,7 @@ export async function requireAuth(
     email: session.utilisateur.email,
     role: session.utilisateur.role,
     personneId: session.utilisateur.personneId,
+    mustChangePassword: session.utilisateur.mustChangePassword,
   };
   next();
 }

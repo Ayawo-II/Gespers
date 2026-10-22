@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
+import { MulterError } from "multer";
 import { ZodError } from "zod";
 
 export class AppError extends Error {
@@ -27,6 +28,22 @@ export function errorHandler(
   res: Response,
   _next: NextFunction,
 ) {
+  if (err instanceof MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      err = new AppError(
+        "La taille maximale par fichier est de 10 Mo.",
+        413,
+        "FILE_TOO_LARGE",
+      );
+    } else {
+      err = new AppError(
+        "La requête d’upload est invalide.",
+        400,
+        "INVALID_UPLOAD",
+      );
+    }
+  }
+
   if (err instanceof AppError) {
     res.status(err.statusCode).json({
       error: { code: err.code, message: err.message },

@@ -85,6 +85,13 @@ enum TypeConge {
   SANS_SOLDE
 }
 
+enum TypeCourrier {
+  ENTRANT
+  SORTANT
+  CIRCULAIRE
+  ARRETE_MINISTERIEL
+}
+
 // --- Agents et organisation ---
 
 model Division {
@@ -154,6 +161,7 @@ model Personnes {
   documents      DocumentPersonne[]
   utilisateur Utilisateur?
   conges       Conge[]
+  courriers    Courrier[]
 }
 
 // --- Carrière ---
@@ -176,8 +184,8 @@ model Mods {
   personne             Personnes   @relation(fields: [personneId], references: [id])
   pieceJustificativeId Int?        @unique
   pieceJustificative   Documents?  @relation("PieceJustificative", fields: [pieceJustificativeId], references: [id])
-  modificateurId       Int
-  modificateur         Utilisateur @relation(fields: [modificateurId], references: [id])
+  modificateurId       Int?
+  modificateur         Utilisateur? @relation(fields: [modificateurId], references: [id], onDelete: SetNull)
 
   @@map("mods")
 }
@@ -206,6 +214,9 @@ model TypeDoc {
 model Documents {
   id           Int         @id @default(autoincrement())
   lien         String
+  nomFichier   String?
+  mimeType     String?
+  tailleOctets Int?
   titre        String
   description  String?
   numeroOrdre  String?
@@ -216,10 +227,35 @@ model Documents {
   dansRegistreGeneral Boolean     @default(false)
   typeDocId    Int
   personnes    DocumentPersonne[]
+  courrier     Courrier?
   typeDoc      TypeDoc     @relation(fields: [typeDocId], references: [id])
   ajouteParId  Int
   ajoutePar    Utilisateur @relation("DocumentsAjoutesPar", fields: [ajouteParId], references: [id])
   modsJustifie Mods?       @relation("PieceJustificative")
+}
+
+model Courrier {
+  id           Int         @id @default(autoincrement())
+  reference    String      @unique
+  type         TypeCourrier
+  date         DateTime    @db.Date
+  objet        String
+  expediteur   String
+  destinataire String
+  personneId   Int?
+  service      String?
+  resume       String
+  documentId   Int?        @unique
+  createdAt    DateTime    @default(now())
+  auteurId     Int
+
+  personne Personnes?  @relation(fields: [personneId], references: [id], onDelete: SetNull)
+  document Documents?  @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  auteur   Utilisateur @relation(fields: [auteurId], references: [id], onDelete: Restrict)
+
+  @@index([date])
+  @@index([type, date])
+  @@index([personneId])
 }
 
 model DocumentPersonne {
@@ -238,16 +274,19 @@ model Utilisateur {
   id                 Int          @id @default(autoincrement())
   email              String       @unique
   passwordHash       String
+  mustChangePassword Boolean      @default(false)
   isActive           Boolean      @default(true)
   role               Role
   dateDesactivation  DateTime?    @db.Date
   motifDesactivation String?
+  createdAt          DateTime     @default(now())
 
   personneId Int @unique
   personne Personnes @relation(fields: [personneId], references: [id])
   modifications      Mods[]
   documentsAjoutes   Documents[]  @relation("DocumentsAjoutesPar")
   conges             Conge[]
+  courriersAjoutes   Courrier[]
   entreesAudit       JournalAudit[]
   sessions           Session[]
 }

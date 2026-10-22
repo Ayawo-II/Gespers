@@ -1,6 +1,32 @@
 import { Router } from "express";
+import { auditRoutes } from "./audit.routes.js";
+import { agentsRoutes } from "./agents.routes.js";
+import { avancementsRoutes } from "./avancements.routes.js";
 import { authRoutes } from "./auth.routes.js";
+import { congesRoutes } from "./conges.routes.js";
+import { comptesRoutes } from "./comptes.routes.js";
+import { courriersRoutes } from "./courriers.routes.js";
+import { documentsRoutes } from "./documents.routes.js";
+import { dashboardRoutes } from "./dashboard.routes.js";
+import { exportsRoutes } from "./exports.routes.js";
+import { grilleRoutes } from "./grille.routes.js";
+import { organisationRoutes } from "./organisation.routes.js";
+import { parcoursRoutes } from "./parcours.routes.js";
+import { searchRoutes } from "./search.routes.js";
 
 export const apiV1Router = Router();
 
 apiV1Router.use("/auth", authRoutes);
+apiV1Router.use("/audit", auditRoutes);
+apiV1Router.use("/agents", agentsRoutes);
+apiV1Router.use("/conges", congesRoutes);
+apiV1Router.use("/comptes", comptesRoutes);
+apiV1Router.use("/courriers", courriersRoutes);
+apiV1Router.use("/documents", documentsRoutes);
+apiV1Router.use("/dashboard", dashboardRoutes);
+apiV1Router.use("/exports", exportsRoutes);
+apiV1Router.use("/search", searchRoutes);
+apiV1Router.use("/", avancementsRoutes);
+apiV1Router.use("/grilles", grilleRoutes);
+apiV1Router.use("/", parcoursRoutes);
+apiV1Router.use("/", organisationRoutes);

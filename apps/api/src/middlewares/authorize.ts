@@ -91,7 +91,11 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   ],
 };
 
-export function requirePermission(permission: Permission): RequestHandler {
+export function hasPermission(role: Role, permission: Permission): boolean {
+  return ROLE_PERMISSIONS[role].includes(permission);
+}
+
+export function requireAnyPermission(...permissions: Permission[]): RequestHandler {
   return (_req, res, next) => {
     const user = res.locals.authenticatedUser;
     if (!user) {
@@ -99,11 +103,15 @@ export function requirePermission(permission: Permission): RequestHandler {
       return;
     }
 
-    if (!ROLE_PERMISSIONS[user.role].includes(permission)) {
+    if (!permissions.some((permission) => hasPermission(user.role, permission))) {
       next(new AppError("Permission insuffisante.", 403, "FORBIDDEN"));
       return;
     }
 
     next();
   };
+}
+
+export function requirePermission(permission: Permission): RequestHandler {
+  return requireAnyPermission(permission);
 }

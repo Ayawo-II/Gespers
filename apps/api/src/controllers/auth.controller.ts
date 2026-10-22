@@ -36,6 +36,7 @@ export async function login(req: Request, res: Response) {
       isActive: true,
       role: true,
       personneId: true,
+      mustChangePassword: true,
     },
   });
 
@@ -91,6 +92,7 @@ export async function login(req: Request, res: Response) {
       email: utilisateur.email,
       role: utilisateur.role,
       personneId: utilisateur.personneId,
+      mustChangePassword: utilisateur.mustChangePassword,
     },
   });
 }
@@ -116,5 +118,50 @@ export async function logout(req: Request, res: Response) {
       "Expires=Thu, 01 Jan 1970 00:00:00 GMT",
     ].join("; "),
   );
+  res.status(204).end();
+}
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1).max(256),
+  newPassword: z.string().min(12).max(256),
+});
+
+export async function changePassword(req: Request, res: Response) {
+  const input = changePasswordSchema.parse(req.body);
+  const user = getAuthenticatedUser(res);
+  const utilisateur = await prisma.utilisateur.findUnique({
+    where: { id: user.id },
+    select: { passwordHash: true },
+  });
+  if (
+    !utilisateur ||
+    !utilisateur.passwordHash.startsWith("$argon2id$") ||
+    !(await argon2.verify(utilisateur.passwordHash, input.currentPassword))
+  ) {
+    throw new AppError(
+      "Mot de passe actuel incorrect.",
+      401,
+      "INVALID_CREDENTIALS",
+    );
+  }
+
+  const passwordHash = await argon2.hash(input.newPassword, {
+    type: argon2.argon2id,
+  });
+  await prisma.$transaction([
+    prisma.utilisateur.update({
+      where: { id: user.id },
+      data: { passwordHash, mustChangePassword: false },
+    }),
+    prisma.journalAudit.create({
+      data: {
+        auteurId: user.id,
+        identifiant: user.email,
+        action: "changement_mot_de_passe",
+        cible: String(user.id),
+        details: "Mot de passe modifié par l’utilisateur.",
+      },
+    }),
+  ]);
   res.status(204).end();
 }
