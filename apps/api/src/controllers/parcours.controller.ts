@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "../config/prisma.js";
 import { getAuthenticatedUser } from "../middlewares/authenticate.js";
 import { AppError } from "../middlewares/errorHandler.js";
+import { agentReadWhere } from "../services/agent-access.js";
 
 const agentIdSchema = z.coerce.number().int().positive();
 const dateOnlySchema = z.iso
@@ -39,17 +40,18 @@ function dateString(value: Date): string {
 
 export async function getTitularisation(req: Request, res: Response) {
   const personneId = parseAgentId(req.params.id);
+  const user = getAuthenticatedUser(res);
+  const personne = await prisma.personnes.findFirst({
+    where: { id: personneId, ...agentReadWhere(user) },
+    select: { id: true },
+  });
+  if (!personne) {
+    throw new AppError("Agent introuvable.", 404, "AGENT_NOT_FOUND");
+  }
   const titularisation = await prisma.titularisation.findUnique({
     where: { personneId },
   });
   if (!titularisation) {
-    const personne = await prisma.personnes.findUnique({
-      where: { id: personneId },
-      select: { id: true },
-    });
-    if (!personne) {
-      throw new AppError("Agent introuvable.", 404, "AGENT_NOT_FOUND");
-    }
     res.json({ data: null });
     return;
   }
@@ -70,7 +72,7 @@ export async function upsertTitularisation(req: Request, res: Response) {
   const result = await prisma.$transaction(async (tx) => {
     const personne = await tx.personnes.findUnique({
       where: { id: personneId },
-      select: { id: true },
+      select: { id: true, etatCarriere: true },
     });
     if (!personne) return null;
 
@@ -81,12 +83,31 @@ export async function upsertTitularisation(req: Request, res: Response) {
     });
 
     if (data.resultat === ResultatExamen.ADMIS) {
+      if (personne.etatCarriere === EtatCarriere.SORTI) {
+        throw new AppError(
+          "Un agent sorti ne peut pas être titularisé.",
+          409,
+          "CAREER_ALREADY_CLOSED",
+        );
+      }
       await tx.personnes.update({
         where: { id: personneId },
         data: {
           etatCarriere: EtatCarriere.TITULAIRE,
         },
       });
+      if (personne.etatCarriere !== EtatCarriere.TITULAIRE) {
+        await tx.historiqueCarriere.create({
+          data: {
+            personneId,
+            etatAvant: personne.etatCarriere,
+            etatApres: EtatCarriere.TITULAIRE,
+            dateEffet: data.dateEffet,
+            motif: `Titularisation après examen admis — décision ${data.referenceDecision}.`,
+            auteurId: user.id,
+          },
+        });
+      }
     }
 
     await tx.journalAudit.create({
@@ -125,6 +146,13 @@ export async function closeCareer(req: Request, res: Response) {
       select: { id: true, etatCarriere: true },
     });
     if (!existing) return null;
+    if (existing.etatCarriere === EtatCarriere.SORTI) {
+      throw new AppError(
+        "Le parcours de cet agent est déjà clôturé.",
+        409,
+        "CAREER_ALREADY_CLOSED",
+      );
+    }
 
     const updated = await tx.personnes.update({
       where: { id: personneId },
@@ -132,6 +160,16 @@ export async function closeCareer(req: Request, res: Response) {
         etatCarriere: EtatCarriere.SORTI,
         dateDepart: data.dateDepart,
         motifDepart: data.motifDepart,
+      },
+    });
+    await tx.historiqueCarriere.create({
+      data: {
+        personneId,
+        etatAvant: existing.etatCarriere,
+        etatApres: EtatCarriere.SORTI,
+        dateEffet: data.dateDepart,
+        motif: data.motifDepart,
+        auteurId: user.id,
       },
     });
     await tx.journalAudit.create({

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../config/prisma.js";
 import { getAuthenticatedUser } from "../middlewares/authenticate.js";
 import { AppError } from "../middlewares/errorHandler.js";
+import { documentReadWhere } from "../services/agent-access.js";
 import {
   mimeTypeForStorageKey,
   removeStoredFile,
@@ -71,12 +72,18 @@ export async function listDocumentTypes(_req: Request, res: Response) {
 export async function listDocuments(req: Request, res: Response) {
   const { page, limit, personneId, typeDocId, dansRegistreGeneral } =
     listQuerySchema.parse(req.query);
+  const user = getAuthenticatedUser(res);
   const where = {
+    AND: [
+      documentReadWhere(user),
+      {
     ...(personneId === undefined
       ? {}
       : { personnes: { some: { personneId } } }),
     ...(typeDocId === undefined ? {} : { typeDocId }),
     ...(dansRegistreGeneral === undefined ? {} : { dansRegistreGeneral }),
+      },
+    ],
   };
   const [documents, total] = await prisma.$transaction([
     prisma.documents.findMany({
@@ -106,8 +113,9 @@ export async function listDocuments(req: Request, res: Response) {
 
 export async function getDocument(req: Request, res: Response) {
   const id = parseId(req.params.id);
-  const document = await prisma.documents.findUnique({
-    where: { id },
+  const user = getAuthenticatedUser(res);
+  const document = await prisma.documents.findFirst({
+    where: { id, ...documentReadWhere(user) },
     include: {
       typeDoc: true,
       personnes: {
@@ -118,6 +126,17 @@ export async function getDocument(req: Request, res: Response) {
         },
       },
       ajoutePar: { select: { id: true, email: true } },
+      versions: {
+        orderBy: [{ remplaceLe: "desc" }, { id: "desc" }],
+        select: {
+          id: true,
+          nomFichier: true,
+          mimeType: true,
+          tailleOctets: true,
+          remplaceLe: true,
+          remplacePar: { select: { id: true, email: true } },
+        },
+      },
     },
   });
   if (!document) {
@@ -227,8 +246,9 @@ export async function uploadDocument(req: Request, res: Response) {
 
 export async function downloadDocument(req: Request, res: Response) {
   const id = parseId(req.params.id);
-  const document = await prisma.documents.findUnique({
-    where: { id },
+  const user = getAuthenticatedUser(res);
+  const document = await prisma.documents.findFirst({
+    where: { id, ...documentReadWhere(user) },
     select: { lien: true, nomFichier: true, mimeType: true },
   });
   if (!document) {
@@ -249,4 +269,119 @@ export async function downloadDocument(req: Request, res: Response) {
       });
     }
   });
+}
+
+export async function replaceDocumentFile(req: Request, res: Response) {
+  const id = parseId(req.params.id);
+  const file = req.file;
+  if (!file) {
+    throw new AppError("Un fichier est obligatoire.", 400, "FILE_REQUIRED");
+  }
+  const user = getAuthenticatedUser(res);
+  try {
+    await verifyFileSignature(file.path, file.mimetype);
+    const document = await prisma.$transaction(async (tx) => {
+      const existing = await tx.documents.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          lien: true,
+          nomFichier: true,
+          mimeType: true,
+          tailleOctets: true,
+          titre: true,
+        },
+      });
+      if (!existing) {
+        throw new AppError("Document introuvable.", 404, "DOCUMENT_NOT_FOUND");
+      }
+      await tx.documentVersion.create({
+        data: {
+          documentId: id,
+          lien: existing.lien,
+          nomFichier: existing.nomFichier,
+          mimeType: existing.mimeType,
+          tailleOctets: existing.tailleOctets,
+          remplaceParId: user.id,
+        },
+      });
+      const updated = await tx.documents.update({
+        where: { id },
+        data: {
+          lien: file.filename,
+          nomFichier: file.originalname,
+          mimeType: file.mimetype,
+          tailleOctets: file.size,
+          dateAjout: new Date(),
+        },
+      });
+      await tx.journalAudit.create({
+        data: {
+          auteurId: user.id,
+          identifiant: user.email,
+          action: "remplacement_document",
+          cible: String(id),
+          details: `Nouvelle version archivée pour « ${existing.titre} ».`,
+        },
+      });
+      return updated;
+    });
+    res.json({
+      data: {
+        ...document,
+        dateDocument: dateString(document.dateDocument),
+        dateAjout: dateString(document.dateAjout),
+      },
+    });
+  } catch (error) {
+    try {
+      await removeStoredFile(file.filename);
+    } catch (cleanupError) {
+      console.error(
+        "Impossible de supprimer le fichier après l’échec du remplacement.",
+        cleanupError,
+      );
+    }
+    throw error;
+  }
+}
+
+export async function downloadDocumentVersion(req: Request, res: Response) {
+  const id = parseId(req.params.id);
+  const versionId = parseId(req.params.versionId);
+  const user = getAuthenticatedUser(res);
+  const version = await prisma.documentVersion.findFirst({
+    where: {
+      id: versionId,
+      documentId: id,
+      document: { is: documentReadWhere(user) },
+    },
+    select: { lien: true, nomFichier: true, mimeType: true },
+  });
+  if (!version) {
+    throw new AppError(
+      "Version de document introuvable.",
+      404,
+      "DOCUMENT_VERSION_NOT_FOUND",
+    );
+  }
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader(
+    "Content-Type",
+    version.mimeType ?? mimeTypeForStorageKey(version.lien),
+  );
+  res.download(
+    resolveStoredFile(version.lien),
+    version.nomFichier ?? `document-${id}-version-${versionId}`,
+    (error) => {
+      if (error && !res.headersSent) {
+        res.status(404).json({
+          error: {
+            code: "DOCUMENT_FILE_NOT_FOUND",
+            message: "Le fichier archivé est introuvable sur le stockage.",
+          },
+        });
+      }
+    },
+  );
 }

@@ -3,14 +3,23 @@ import { z } from "zod";
 import { prisma } from "../config/prisma.js";
 import { getAuthenticatedUser } from "../middlewares/authenticate.js";
 import { hasPermission, type Permission } from "../middlewares/authorize.js";
-import { agentReadWhere } from "../services/agent-access.js";
+import {
+  agentReadWhere,
+  documentReadWhere,
+} from "../services/agent-access.js";
 
 const querySchema = z.object({
   q: z.string().trim().min(2).max(100),
+  typeAgent: z.enum(["FONCTIONNAIRE", "CONTRACTUEL", "PIGISTE"]).optional(),
+  etatCarriere: z.enum(["STAGIAIRE", "TITULAIRE", "SORTI"]).optional(),
+  divisionId: z.coerce.number().int().positive().optional(),
+  sectionId: z.coerce.number().int().positive().optional(),
+  typeDocId: z.coerce.number().int().positive().optional(),
 });
 
 export async function searchGlobally(req: Request, res: Response) {
-  const { q } = querySchema.parse(req.query);
+  const { q, typeAgent, etatCarriere, divisionId, sectionId, typeDocId } =
+    querySchema.parse(req.query);
   const user = getAuthenticatedUser(res);
   const canSearchAgents = [
     "agents.read.all",
@@ -21,6 +30,14 @@ export async function searchGlobally(req: Request, res: Response) {
     hasPermission(user.role, permission),
   );
   const canSearchCorrespondence = hasPermission(user.role, "courriers.read");
+  const canSearchDocuments = [
+    "documents.read.all",
+    "documents.read.team",
+    "documents.read.self",
+  ] satisfies Permission[];
+  const canSearchDocumentsForUser = canSearchDocuments.some((permission) =>
+    hasPermission(user.role, permission),
+  );
 
   const [agents, courriers, documents] = await Promise.all([
     canSearchAgentsForUser
@@ -29,6 +46,18 @@ export async function searchGlobally(req: Request, res: Response) {
             AND: [
               agentReadWhere(user),
               { estArchive: false },
+              ...(typeAgent ? [{ typeAgent }] : []),
+              ...(etatCarriere ? [{ etatCarriere }] : []),
+              ...(divisionId || sectionId
+                ? [{
+                    affectations: {
+                      some: {
+                        ...(sectionId ? { sectionId } : {}),
+                        ...(divisionId ? { section: { divisionId } } : {}),
+                      },
+                    },
+                  }]
+                : []),
               {
                 OR: [
                   { nom: { contains: q, mode: "insensitive" } },
@@ -68,14 +97,20 @@ export async function searchGlobally(req: Request, res: Response) {
           select: { id: true, reference: true, type: true, date: true, objet: true },
         })
       : Promise.resolve([]),
-    canSearchCorrespondence
+    canSearchDocumentsForUser
       ? prisma.documents.findMany({
           where: {
-            OR: [
-              { titre: { contains: q, mode: "insensitive" } },
-              { description: { contains: q, mode: "insensitive" } },
-              { reference: { contains: q, mode: "insensitive" } },
-              { numeroOrdre: { contains: q, mode: "insensitive" } },
+            AND: [
+              documentReadWhere(user),
+              ...(typeDocId ? [{ typeDocId }] : []),
+              {
+                OR: [
+                  { titre: { contains: q, mode: "insensitive" } },
+                  { description: { contains: q, mode: "insensitive" } },
+                  { reference: { contains: q, mode: "insensitive" } },
+                  { numeroOrdre: { contains: q, mode: "insensitive" } },
+                ],
+              },
             ],
           },
           take: 10,
@@ -106,7 +141,7 @@ export async function searchGlobally(req: Request, res: Response) {
     available: {
       agents: canSearchAgentsForUser,
       courriers: canSearchCorrespondence,
-      documents: canSearchCorrespondence,
+      documents: canSearchDocumentsForUser,
     },
   });
 }

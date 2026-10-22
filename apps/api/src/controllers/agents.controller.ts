@@ -183,8 +183,31 @@ export async function getAgent(req: Request, res: Response) {
 
 export async function createAgent(req: Request, res: Response) {
   const data = createAgentSchema.parse(req.body);
+  const user = getAuthenticatedUser(res);
   try {
-    const agent = await prisma.personnes.create({ data });
+    const agent = await prisma.$transaction(async (tx) => {
+      const created = await tx.personnes.create({ data });
+      await tx.historiqueCarriere.create({
+        data: {
+          personneId: created.id,
+          etatAvant: null,
+          etatApres: created.etatCarriere,
+          dateEffet: created.dateEntree,
+          motif: "Création du dossier agent.",
+          auteurId: user.id,
+        },
+      });
+      await tx.journalAudit.create({
+        data: {
+          auteurId: user.id,
+          identifiant: user.email,
+          action: "creation_agent",
+          cible: String(created.id),
+          details: `Création du dossier ${created.matricule}.`,
+        },
+      });
+      return created;
+    });
     res.status(201).json({ data: serializeAgent(agent) });
   } catch (error) {
     handleAgentWriteError(error);
@@ -194,8 +217,21 @@ export async function createAgent(req: Request, res: Response) {
 export async function updateAgent(req: Request, res: Response) {
   const id = parseId(req.params.id);
   const data = updateAgentSchema.parse(req.body);
+  const user = getAuthenticatedUser(res);
   try {
-    const agent = await prisma.personnes.update({ where: { id }, data });
+    const agent = await prisma.$transaction(async (tx) => {
+      const updated = await tx.personnes.update({ where: { id }, data });
+      await tx.journalAudit.create({
+        data: {
+          auteurId: user.id,
+          identifiant: user.email,
+          action: "modification_agent",
+          cible: String(id),
+          details: `Modification des champs : ${Object.keys(data).sort().join(", ")}.`,
+        },
+      });
+      return updated;
+    });
     res.json({ data: serializeAgent(agent) });
   } catch (error) {
     if (

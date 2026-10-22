@@ -77,6 +77,13 @@ export async function listAccounts(_req: Request, res: Response) {
 export async function createAccount(req: Request, res: Response) {
   const data = createAccountSchema.parse(req.body);
   const user = getAuthenticatedUser(res);
+  if (data.role === Role.ADMIN_SYSTEME && user.role !== Role.ADMIN_SYSTEME) {
+    throw new AppError(
+      "Seul un administrateur système peut créer un compte administrateur système.",
+      403,
+      "FORBIDDEN",
+    );
+  }
   const temporaryPassword = generateTemporaryPassword();
   const passwordHash = await argon2.hash(temporaryPassword, {
     type: argon2.argon2id,
@@ -119,6 +126,23 @@ export async function updateAccountRole(req: Request, res: Response) {
   const id = parseId(req.params.id);
   const { role } = changeRoleSchema.parse(req.body);
   const user = getAuthenticatedUser(res);
+  const target = await prisma.utilisateur.findUnique({
+    where: { id },
+    select: { role: true },
+  });
+  if (!target) {
+    throw new AppError("Compte introuvable.", 404, "ACCOUNT_NOT_FOUND");
+  }
+  if (
+    user.role !== Role.ADMIN_SYSTEME &&
+    (target.role === Role.ADMIN_SYSTEME || role === Role.ADMIN_SYSTEME)
+  ) {
+    throw new AppError(
+      "Seul un administrateur système peut gérer ce rôle.",
+      403,
+      "FORBIDDEN",
+    );
+  }
   try {
     const account = await prisma.$transaction(async (tx) => {
       const updated = await tx.utilisateur.update({
@@ -155,6 +179,20 @@ export async function setAccountActive(req: Request, res: Response) {
   const id = parseId(req.params.id);
   const data = disableSchema.parse(req.body);
   const user = getAuthenticatedUser(res);
+  const target = await prisma.utilisateur.findUnique({
+    where: { id },
+    select: { role: true },
+  });
+  if (!target) {
+    throw new AppError("Compte introuvable.", 404, "ACCOUNT_NOT_FOUND");
+  }
+  if (target.role === Role.ADMIN_SYSTEME && user.role !== Role.ADMIN_SYSTEME) {
+    throw new AppError(
+      "Seul un administrateur système peut gérer ce compte.",
+      403,
+      "FORBIDDEN",
+    );
+  }
   if (id === user.id && !data.isActive) {
     throw new AppError(
       "Vous ne pouvez pas désactiver votre propre compte.",
@@ -178,6 +216,9 @@ export async function setAccountActive(req: Request, res: Response) {
           isActive: data.isActive,
           dateDesactivation: data.isActive ? null : new Date(),
           motifDesactivation: data.isActive ? null : data.motifDesactivation,
+          ...(data.isActive
+            ? { failedLoginAttempts: 0, lockedUntil: null }
+            : {}),
           ...(data.isActive ? {} : { sessions: { deleteMany: {} } }),
         },
         select: accountSelect,
@@ -211,6 +252,20 @@ export async function setAccountActive(req: Request, res: Response) {
 export async function resetAccountPassword(req: Request, res: Response) {
   const id = parseId(req.params.id);
   const user = getAuthenticatedUser(res);
+  const target = await prisma.utilisateur.findUnique({
+    where: { id },
+    select: { role: true },
+  });
+  if (!target) {
+    throw new AppError("Compte introuvable.", 404, "ACCOUNT_NOT_FOUND");
+  }
+  if (target.role === Role.ADMIN_SYSTEME && user.role !== Role.ADMIN_SYSTEME) {
+    throw new AppError(
+      "Seul un administrateur système peut gérer ce compte.",
+      403,
+      "FORBIDDEN",
+    );
+  }
   const temporaryPassword = generateTemporaryPassword();
   const passwordHash = await argon2.hash(temporaryPassword, {
     type: argon2.argon2id,
@@ -223,6 +278,8 @@ export async function resetAccountPassword(req: Request, res: Response) {
         data: {
           passwordHash,
           mustChangePassword: true,
+          failedLoginAttempts: 0,
+          lockedUntil: null,
           sessions: { deleteMany: {} },
         },
         select: accountSelect,

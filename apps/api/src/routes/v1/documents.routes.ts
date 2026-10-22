@@ -1,32 +1,50 @@
 import { Router } from "express";
 import {
   downloadDocument,
+  downloadDocumentVersion,
   getDocument,
   listDocumentTypes,
   listDocuments,
+  replaceDocumentFile,
   uploadDocument,
 } from "../../controllers/documents.controller.js";
 import { exportDocumentsZip } from "../../controllers/exports.controller.js";
 import { requireAuth } from "../../middlewares/authenticate.js";
-import { requirePermission } from "../../middlewares/authorize.js";
+import {
+  requireAnyPermission,
+  requirePermission,
+} from "../../middlewares/authorize.js";
 import { documentUpload } from "../../services/document-storage.js";
 
 export const documentsRoutes = Router();
 
 documentsRoutes.use(requireAuth);
-documentsRoutes.get("/types", requirePermission("courriers.read"), listDocumentTypes);
-documentsRoutes.get("/", requirePermission("courriers.read"), listDocuments);
+const requireDocumentReadAccess = requireAnyPermission(
+  "documents.read.all",
+  "documents.read.team",
+  "documents.read.self",
+  "courriers.read",
+);
+documentsRoutes.get("/types", requireDocumentReadAccess, listDocumentTypes);
+documentsRoutes.get("/", requireDocumentReadAccess, listDocuments);
 documentsRoutes.get(
   "/export.zip",
   requirePermission("export"),
-  requirePermission("courriers.read"),
+  requirePermission("documents.read.all"),
   exportDocumentsZip,
 );
-documentsRoutes.get("/:id/file", requirePermission("courriers.read"), downloadDocument);
-documentsRoutes.get("/:id", requirePermission("courriers.read"), getDocument);
+documentsRoutes.get("/:id/file", requireDocumentReadAccess, downloadDocument);
+documentsRoutes.get("/:id/versions/:versionId/file", requireDocumentReadAccess, downloadDocumentVersion);
+documentsRoutes.put(
+  "/:id/file",
+  requirePermission("documents.write"),
+  documentUpload.single("file"),
+  replaceDocumentFile,
+);
+documentsRoutes.get("/:id", requireDocumentReadAccess, getDocument);
 documentsRoutes.post(
   "/",
-  requirePermission("courriers.write"),
+  requirePermission("documents.write"),
   documentUpload.single("file"),
   uploadDocument,
 );

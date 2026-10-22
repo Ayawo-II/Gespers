@@ -28,6 +28,40 @@ services:
         condition: service_healthy
     restart: "no"
 
+  backup:
+    image: postgres:17-alpine
+    environment:
+      PGHOST: db
+      PGPORT: "5432"
+      PGUSER: gespers
+      PGPASSWORD: gespers
+      PGDATABASE: gespers
+    volumes:
+      - db_backups:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        while true; do
+          file="/backups/gespers-$$(date -u +%Y%m%dT%H%M%SZ).dump"
+          pg_dump --format=custom --file="$$file"
+          dropdb --if-exists gespers_restore_test
+          createdb gespers_restore_test
+          pg_restore --exit-on-error --no-owner --dbname=gespers_restore_test "$$file"
+          psql --dbname=gespers_restore_test --set=ON_ERROR_STOP=1 \
+            --command="SELECT to_regclass('public.Personnes') IS NOT NULL" >/dev/null
+          dropdb gespers_restore_test
+          find /backups -type f -name 'gespers-*.dump' -mtime +14 -delete
+          echo "[backup] sauvegarde créée et restauration vérifiée : $$file"
+          sleep 86400
+        done
+    restart: unless-stopped
+
   api:
     build:
       context: .
@@ -67,6 +101,7 @@ services:
 
 volumes:
   db_data:
+  db_backups:
   api_uploads:
   web_node_modules:
   web_next:

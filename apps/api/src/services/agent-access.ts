@@ -41,3 +41,14 @@ export function agentReadWhere(
 
   return { id: user.personneId };
 }
+
+export function documentReadWhere(
+  user: AuthenticatedUser,
+): Prisma.DocumentsWhereInput {
+  if (hasPermission(user.role, "documents.read.all")) return {};
+  return {
+    personnes: {
+      some: { personne: { is: agentReadWhere(user) } },
+    },
+  };
+}

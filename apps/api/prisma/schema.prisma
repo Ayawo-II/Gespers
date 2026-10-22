@@ -16,6 +16,7 @@ enum Role {
   RESPONSABLE_RH
   CHEF_PERSONNEL
   DG
+  ADMIN_SYSTEME
 }
 
 enum Sexe {
@@ -95,21 +96,22 @@ enum TypeCourrier {
 // --- Agents et organisation ---
 
 model Division {
-  id       Int     @id @default(autoincrement())
+  id       Int        @id @default(autoincrement())
   libelle  String
-  chefId   Int?    @unique
+  chefId   Int?       @unique
   chef     Personnes? @relation("ChefDivision", fields: [chefId], references: [id])
   sections Section[]
 }
 
 model Section {
-  id         Int      @id @default(autoincrement())
-  libelle    String
-  divisionId Int
-  division   Division @relation(fields: [divisionId], references: [id])
-  chefId     Int?     @unique
-  chef       Personnes? @relation("ChefSection", fields: [chefId], references: [id])
-  affectations Affectation[]
+  id                     Int                     @id @default(autoincrement())
+  libelle                String
+  divisionId             Int
+  division               Division                @relation(fields: [divisionId], references: [id])
+  chefId                 Int?                    @unique
+  chef                   Personnes?              @relation("ChefSection", fields: [chefId], references: [id])
+  affectations           Affectation[]
+  historiqueAffectations HistoriqueAffectation[]
 }
 
 /// Association d'affectation Section 0..* <-> Personnes 0..* (diagramme : affectation)
@@ -124,10 +126,10 @@ model Affectation {
 }
 
 model Personnes {
-  id                      Int           @id @default(autoincrement())
+  id                      Int          @id @default(autoincrement())
   nom                     String
   prenoms                 String
-  dateNaissance           DateTime      @db.Date
+  dateNaissance           DateTime     @db.Date
   lieuNaissance           String
   sexe                    Sexe
   nbreEnfant              Int
@@ -137,37 +139,39 @@ model Personnes {
   adresse                 String
   diplome                 String
   fonction                String
-  matricule               String        @unique
+  matricule               String       @unique
   categorie               Categorie?
   classe                  Classe?
   echelon                 Int?
   indice                  Int?
   typeAgent               TypeAgent
   etatCarriere            EtatCarriere
-  dateEntree              DateTime      @db.Date
-  dateDebutStage          DateTime?     @db.Date
-  dateFinStagePrevue      DateTime?     @db.Date
-  dateFinContrat          DateTime?     @db.Date
-  dateDernierAvancement   DateTime?     @db.Date
-  dateDepart              DateTime?     @db.Date
+  dateEntree              DateTime     @db.Date
+  dateDebutStage          DateTime?    @db.Date
+  dateFinStagePrevue      DateTime?    @db.Date
+  dateFinContrat          DateTime?    @db.Date
+  dateDernierAvancement   DateTime?    @db.Date
+  dateDepart              DateTime?    @db.Date
   motifDepart             MotifDepart?
-  estArchive              Boolean       @default(false)
+  estArchive              Boolean      @default(false)
 
-  chefDeDivision Division?        @relation("ChefDivision")
-  chefDeSection  Section?         @relation("ChefSection")
-  affectations   Affectation[]
-  historique     Mods[]
-  titularisation Titularisation?
-  documents      DocumentPersonne[]
-  utilisateur Utilisateur?
-  conges       Conge[]
-  courriers    Courrier[]
+  chefDeDivision         Division?               @relation("ChefDivision")
+  chefDeSection          Section?                @relation("ChefSection")
+  affectations           Affectation[]
+  historique             Mods[]
+  titularisation         Titularisation?
+  documents              DocumentPersonne[]
+  utilisateur            Utilisateur?
+  conges                 Conge[]
+  courriers              Courrier[]
+  historiqueCarriere     HistoriqueCarriere[]
+  historiqueAffectations HistoriqueAffectation[]
 }
 
 // --- Carrière ---
 
 model Mods {
-  id                   Int         @id @default(autoincrement())
+  id                   Int          @id @default(autoincrement())
   ancCategorie         Categorie
   ancClasse            Classe
   ancEchelon           Int
@@ -176,14 +180,14 @@ model Mods {
   nvClasse             Classe
   nvEchelon            Int
   nvFonction           String
-  dateEffet            DateTime    @db.Date
+  dateEffet            DateTime     @db.Date
   nature               NatureModif
   mode                 ModeModif
   justification        String?
   personneId           Int
-  personne             Personnes   @relation(fields: [personneId], references: [id])
-  pieceJustificativeId Int?        @unique
-  pieceJustificative   Documents?  @relation("PieceJustificative", fields: [pieceJustificativeId], references: [id])
+  personne             Personnes    @relation(fields: [personneId], references: [id])
+  pieceJustificativeId Int?         @unique
+  pieceJustificative   Documents?   @relation("PieceJustificative", fields: [pieceJustificativeId], references: [id])
   modificateurId       Int?
   modificateur         Utilisateur? @relation(fields: [modificateurId], references: [id], onDelete: SetNull)
 
@@ -191,62 +195,80 @@ model Mods {
 }
 
 model Titularisation {
-  id                 Int             @id @default(autoincrement())
-  dateExamen         DateTime        @db.Date
-  resultat           ResultatExamen
-  dateEffet          DateTime        @db.Date
-  referenceDecision  String
-  personneId         Int             @unique
-  personne           Personnes       @relation(fields: [personneId], references: [id])
+  id                Int            @id @default(autoincrement())
+  dateExamen        DateTime       @db.Date
+  resultat          ResultatExamen
+  dateEffet         DateTime       @db.Date
+  referenceDecision String
+  personneId        Int            @unique
+  personne          Personnes      @relation(fields: [personneId], references: [id])
 }
 
 // --- Documents et courriers ---
 // Documents.estArchive : volontairement absent (demande utilisateur : ne pas toucher cet attribut).
 
 model TypeDoc {
-  id         Int         @id @default(autoincrement())
-  libelle    String
-  documents  Documents[]
+  id        Int         @id @default(autoincrement())
+  libelle   String
+  documents Documents[]
 
   @@map("typeDoc")
 }
 
 model Documents {
-  id           Int         @id @default(autoincrement())
-  lien         String
-  nomFichier   String?
-  mimeType     String?
-  tailleOctets Int?
-  titre        String
-  description  String?
-  numeroOrdre  String?
-  reference    String?
-  expediteur   String?
-  dateDocument DateTime    @db.Date
-  dateAjout    DateTime    @db.Date
-  dansRegistreGeneral Boolean     @default(false)
-  typeDocId    Int
-  personnes    DocumentPersonne[]
-  courrier     Courrier?
-  typeDoc      TypeDoc     @relation(fields: [typeDocId], references: [id])
-  ajouteParId  Int
-  ajoutePar    Utilisateur @relation("DocumentsAjoutesPar", fields: [ajouteParId], references: [id])
-  modsJustifie Mods?       @relation("PieceJustificative")
+  id                  Int                @id @default(autoincrement())
+  lien                String
+  nomFichier          String?
+  mimeType            String?
+  tailleOctets        Int?
+  titre               String
+  description         String?
+  numeroOrdre         String?
+  reference           String?
+  expediteur          String?
+  dateDocument        DateTime           @db.Date
+  dateAjout           DateTime           @db.Date
+  dansRegistreGeneral Boolean            @default(false)
+  typeDocId           Int
+  personnes           DocumentPersonne[]
+  courrier            Courrier?
+  typeDoc             TypeDoc            @relation(fields: [typeDocId], references: [id])
+  ajouteParId         Int
+  ajoutePar           Utilisateur        @relation("DocumentsAjoutesPar", fields: [ajouteParId], references: [id])
+  modsJustifie        Mods?              @relation("PieceJustificative")
+  versions            DocumentVersion[]
+  conges              Conge[]
+}
+
+model DocumentVersion {
+  id            Int      @id @default(autoincrement())
+  documentId    Int
+  lien          String
+  nomFichier    String?
+  mimeType      String?
+  tailleOctets  Int?
+  remplaceLe    DateTime @default(now())
+  remplaceParId Int
+
+  document    Documents   @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  remplacePar Utilisateur @relation("DocumentsRemplacesPar", fields: [remplaceParId], references: [id], onDelete: Restrict)
+
+  @@index([documentId, remplaceLe])
 }
 
 model Courrier {
-  id           Int         @id @default(autoincrement())
-  reference    String      @unique
+  id           Int          @id @default(autoincrement())
+  reference    String       @unique
   type         TypeCourrier
-  date         DateTime    @db.Date
+  date         DateTime     @db.Date
   objet        String
   expediteur   String
   destinataire String
   personneId   Int?
   service      String?
   resume       String
-  documentId   Int?        @unique
-  createdAt    DateTime    @default(now())
+  documentId   Int?         @unique
+  createdAt    DateTime     @default(now())
   auteurId     Int
 
   personne Personnes?  @relation(fields: [personneId], references: [id], onDelete: SetNull)
@@ -271,24 +293,29 @@ model DocumentPersonne {
 // --- Comptes, congés et audit ---
 
 model Utilisateur {
-  id                 Int          @id @default(autoincrement())
-  email              String       @unique
-  passwordHash       String
-  mustChangePassword Boolean      @default(false)
-  isActive           Boolean      @default(true)
-  role               Role
-  dateDesactivation  DateTime?    @db.Date
-  motifDesactivation String?
-  createdAt          DateTime     @default(now())
+  id                  Int       @id @default(autoincrement())
+  email               String    @unique
+  passwordHash        String
+  mustChangePassword  Boolean   @default(false)
+  isActive            Boolean   @default(true)
+  role                Role
+  dateDesactivation   DateTime? @db.Date
+  motifDesactivation  String?
+  createdAt           DateTime  @default(now())
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
 
-  personneId Int @unique
-  personne Personnes @relation(fields: [personneId], references: [id])
-  modifications      Mods[]
-  documentsAjoutes   Documents[]  @relation("DocumentsAjoutesPar")
-  conges             Conge[]
-  courriersAjoutes   Courrier[]
-  entreesAudit       JournalAudit[]
-  sessions           Session[]
+  personneId             Int                     @unique
+  personne               Personnes               @relation(fields: [personneId], references: [id])
+  modifications          Mods[]
+  documentsAjoutes       Documents[]             @relation("DocumentsAjoutesPar")
+  conges                 Conge[]
+  courriersAjoutes       Courrier[]
+  entreesAudit           JournalAudit[]
+  sessions               Session[]
+  versionsDocuments      DocumentVersion[]       @relation("DocumentsRemplacesPar")
+  historiqueAffectations HistoriqueAffectation[]
+  historiqueCarrieres    HistoriqueCarriere[]
 }
 
 model Session {
@@ -309,18 +336,52 @@ model Conge {
   personneId        Int
   type              TypeConge
   dateDebut         DateTime  @db.Date
-  dateFin            DateTime  @db.Date
+  dateFin           DateTime  @db.Date
   dureeJours        Int
   referenceDecision String
   pieceJointe       String?
+  documentId        Int?
   auteurId          Int
   createdAt         DateTime  @default(now())
 
   personne Personnes   @relation(fields: [personneId], references: [id], onDelete: Restrict)
   auteur   Utilisateur @relation(fields: [auteurId], references: [id], onDelete: Restrict)
+  document Documents?  @relation(fields: [documentId], references: [id], onDelete: SetNull)
 
   @@index([personneId, dateDebut, dateFin])
   @@index([auteurId])
+}
+
+model HistoriqueCarriere {
+  id         Int           @id @default(autoincrement())
+  personneId Int
+  etatAvant  EtatCarriere?
+  etatApres  EtatCarriere
+  dateEffet  DateTime      @db.Date
+  motif      String?
+  auteurId   Int?
+  createdAt  DateTime      @default(now())
+
+  personne Personnes    @relation(fields: [personneId], references: [id], onDelete: Restrict)
+  auteur   Utilisateur? @relation(fields: [auteurId], references: [id], onDelete: SetNull)
+
+  @@index([personneId, dateEffet])
+}
+
+model HistoriqueAffectation {
+  id         Int       @id @default(autoincrement())
+  personneId Int
+  sectionId  Int
+  dateDebut  DateTime  @db.Date
+  dateFin    DateTime? @db.Date
+  auteurId   Int?
+  createdAt  DateTime  @default(now())
+
+  personne Personnes    @relation(fields: [personneId], references: [id], onDelete: Restrict)
+  section  Section      @relation(fields: [sectionId], references: [id], onDelete: Restrict)
+  auteur   Utilisateur? @relation(fields: [auteurId], references: [id], onDelete: SetNull)
+
+  @@index([personneId, dateDebut])
 }
 
 model JournalAudit {
@@ -340,11 +401,17 @@ model JournalAudit {
 }
 
 model GrilleAvancement {
-  id                Int        @id @default(1)
-  categories        Categorie[] @default([A1, A2, A3, B, C, D])
-  classes           Classe[]    @default([CLASSE_3, CLASSE_2, CLASSE_1, CLASSE_PRINCIPALE, EXCEPTIONNELLE])
-  echelons          String[]    @default(["1", "2", "3", "4", "5", "6"])
-  dureeEchelonMois  Int         @default(24)
-  dureeClasseMois   Int         @default(36)
-  updatedAt         DateTime    @updatedAt
+  id               Int         @id @default(1)
+  categories       Categorie[] @default([A1, A2, A3, B, C, D])
+  classes          Classe[]    @default([CLASSE_3, CLASSE_2, CLASSE_1, CLASSE_PRINCIPALE, EXCEPTIONNELLE])
+  echelons         String[]    @default(["1", "2", "3", "4", "5", "6"])
+  dureeEchelonMois Int         @default(24)
+  dureeClasseMois  Int         @default(36)
+  updatedAt        DateTime    @updatedAt
+}
+
+model PolitiqueConge {
+  id             Int     @id @default(1)
+  joursAnnuels   Int     @default(30)
+  reportIllimite Boolean @default(true)
 }

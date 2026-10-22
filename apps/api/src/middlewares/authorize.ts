@@ -4,6 +4,10 @@ import { AppError } from "./errorHandler.js";
 
 export type Permission =
   | "dashboard.read"
+  | "documents.read.all"
+  | "documents.read.team"
+  | "documents.read.self"
+  | "documents.write"
   | "agents.read.all"
   | "agents.read.team"
   | "agents.read.self"
@@ -25,18 +29,29 @@ export type Permission =
   | "export";
 
 const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
-  AGENT: ["agents.read.self", "conges.read.self"],
+  AGENT: [
+    "agents.read.self",
+    "conges.read.self",
+    "documents.read.self",
+    "export",
+  ],
   CHEF_SECTION: [
     "agents.read.self",
     "agents.read.team",
     "conges.read.self",
     "conges.read.team",
+    "documents.read.self",
+    "documents.read.team",
+    "export",
   ],
   CHEF_DIVISION: [
     "agents.read.self",
     "agents.read.team",
     "conges.read.self",
     "conges.read.team",
+    "documents.read.self",
+    "documents.read.team",
+    "export",
   ],
   RESPONSABLE_RH: [
     "dashboard.read",
@@ -48,6 +63,8 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "grilles.write",
     "courriers.read",
     "courriers.write",
+    "documents.read.all",
+    "documents.write",
     "conges.read.all",
     "conges.read.self",
     "conges.write",
@@ -68,6 +85,8 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "grilles.write",
     "courriers.read",
     "courriers.write",
+    "documents.read.all",
+    "documents.write",
     "conges.read.all",
     "conges.read.self",
     "conges.write",
@@ -84,9 +103,36 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "agents.read.self",
     "avancements.read",
     "courriers.read",
+    "documents.read.all",
     "conges.read.all",
     "conges.read.self",
     "organisation.read",
+    "export",
+  ],
+  ADMIN_SYSTEME: [
+    "dashboard.read",
+    "agents.read.all",
+    "agents.read.team",
+    "agents.read.self",
+    "agents.write",
+    "documents.read.all",
+    "documents.read.team",
+    "documents.read.self",
+    "documents.write",
+    "avancements.read",
+    "avancements.write",
+    "grilles.write",
+    "courriers.read",
+    "courriers.write",
+    "conges.read.all",
+    "conges.read.team",
+    "conges.read.self",
+    "conges.write",
+    "comptes.manage",
+    "roles.manage",
+    "audit.read",
+    "organisation.read",
+    "organisation.write",
     "export",
   ],
 };

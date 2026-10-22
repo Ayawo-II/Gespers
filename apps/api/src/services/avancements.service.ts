@@ -17,6 +17,7 @@ export interface ManualAdvancementInput {
   echelon: number | null;
   fonction?: string;
   justification: string;
+  pieceJustificativeId?: number | null;
   modificateurId: number;
   modificateurEmail: string;
 }
@@ -87,6 +88,15 @@ export async function createManualAdvancement(
       echelon: input.echelon ?? personne.echelon,
     };
     const nextFonction = input.fonction ?? personne.fonction;
+    if (input.pieceJustificativeId) {
+      const document = await tx.documents.findUnique({
+        where: { id: input.pieceJustificativeId },
+        select: { id: true },
+      });
+      if (!document) {
+        return { kind: "justificative-document-not-found" as const };
+      }
+    }
 
     if (
       current.categorie === next.categorie &&
@@ -112,6 +122,7 @@ export async function createManualAdvancement(
         mode: ModeModif.MANUEL,
         justification: input.justification,
         personneId,
+        pieceJustificativeId: input.pieceJustificativeId,
         modificateurId: input.modificateurId,
       },
     });
@@ -123,7 +134,9 @@ export async function createManualAdvancement(
         classe: next.classe,
         echelon: next.echelon,
         fonction: nextFonction,
-        dateDernierAvancement: input.dateEffet,
+        ...(input.nature === NatureModif.ECHELON
+          ? { dateDernierAvancement: input.dateEffet }
+          : {}),
       },
     });
 
@@ -159,6 +172,7 @@ export async function runAutomaticEchelonAdvancements(now = new Date()) {
       const candidates = await tx.personnes.findMany({
         where: {
           estArchive: false,
+          typeAgent: "FONCTIONNAIRE",
           etatCarriere: "TITULAIRE",
           categorie: { not: null },
           classe: { not: null },

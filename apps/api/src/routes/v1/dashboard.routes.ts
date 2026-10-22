@@ -1,9 +1,26 @@
 import { Router } from "express";
-import { getDashboardSummary } from "../../controllers/dashboard.controller.js";
+import {
+  getDashboardSummary,
+  getPersonalDashboard,
+  getTeamDashboard,
+} from "../../controllers/dashboard.controller.js";
 import { requireAuth } from "../../middlewares/authenticate.js";
-import { requirePermission } from "../../middlewares/authorize.js";
+import {
+  requireAnyPermission,
+  requirePermission,
+} from "../../middlewares/authorize.js";
 
 export const dashboardRoutes = Router();
 
-dashboardRoutes.use(requireAuth, requirePermission("dashboard.read"));
-dashboardRoutes.get("/summary", getDashboardSummary);
+dashboardRoutes.use(requireAuth);
+dashboardRoutes.get(
+  "/me",
+  requireAnyPermission("agents.read.self", "agents.read.all"),
+  getPersonalDashboard,
+);
+dashboardRoutes.get(
+  "/team",
+  requirePermission("agents.read.team"),
+  getTeamDashboard,
+);
+dashboardRoutes.get("/summary", requirePermission("dashboard.read"), getDashboardSummary);
