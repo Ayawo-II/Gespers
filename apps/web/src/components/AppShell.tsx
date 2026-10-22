@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { useStore } from "@/lib/mock/store";
+import { useStore } from "@/lib/store/api-store";
 import { useHeader } from "@/lib/header-context";
 import { canAccessPath, hasPermission, landingPathForRole, visibleInNav, type Permission } from "@/lib/rbac";
 import { ROLE_LABELS, type Agent } from "@/lib/types";

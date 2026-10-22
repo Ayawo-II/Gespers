@@ -25,8 +25,20 @@ export type Permission =
 export const ROLE_PERMS: Record<string, Permission[]> = {
   // --- Roles Prisma officiels (majuscules) ---
   AGENT: ["agents.read.self", "conges.read.self"],
-  CHEF_SECTION: ["agents.read.self", "agents.read.team", "conges.read.self", "conges.read.team"],
-  CHEF_DIVISION: ["agents.read.self", "agents.read.team", "conges.read.self", "conges.read.team"],
+  CHEF_SECTION: [
+    "agents.read.self",
+    "agents.read.team",
+    "conges.read.self",
+    "conges.read.team",
+    "organisation.read",
+  ],
+  CHEF_DIVISION: [
+    "agents.read.self",
+    "agents.read.team",
+    "conges.read.self",
+    "conges.read.team",
+    "organisation.read",
+  ],
   RESPONSABLE_RH: [
     "dashboard.read",
     "agents.read.all",
@@ -86,6 +98,7 @@ export const ROLE_PERMS: Record<string, Permission[]> = {
     "agents.read.team",
     "conges.read.self",
     "conges.read.team",
+    "organisation.read",
   ],
   rh: [
     "dashboard.read",

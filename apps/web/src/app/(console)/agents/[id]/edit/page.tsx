@@ -3,7 +3,7 @@
 import { useParams } from "next/navigation";
 import { AgentForm } from "@/components/AgentForm";
 import { Alert, Empty, PageHeader } from "@/components/ui";
-import { useStore } from "@/lib/mock/store";
+import { useStore } from "@/lib/store/api-store";
 import { hasPermission } from "@/lib/rbac";
 import { fullName } from "@/lib/utils";
 

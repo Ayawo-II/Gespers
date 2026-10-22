@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { Alert, Button, Card, Field, PageHeader } from "@/components/ui";
-import { useStore } from "@/lib/mock/store";
+import { useStore } from "@/lib/store/api-store";
 
 function parseList(value: string) {
   return value
@@ -21,9 +21,10 @@ export default function GrillesPage() {
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
 
-  function onSubmit(e: FormEvent) {
+  async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
+    setMsg("");
     const cats = parseList(categories);
     const cls = parseList(classes);
     const ech = parseList(echelons);
@@ -37,13 +38,17 @@ export default function GrillesPage() {
       setError("Les durées doivent être des nombres positifs (en mois).");
       return;
     }
-    updateGrille({
+    const res = await updateGrille({
       categories: cats,
       classes: cls,
       echelons: ech,
       dureeEchelonMois: dEch,
       dureeClasseMois: dCl,
     });
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
     setMsg("Grille enregistrée. Les éligibilités automatiques utilisent ces durées.");
   }
 

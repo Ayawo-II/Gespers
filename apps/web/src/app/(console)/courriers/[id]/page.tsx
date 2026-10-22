@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { CourrierForm } from "@/components/CourrierForm";
 import { Card, Empty, PageHeader } from "@/components/ui";
-import { useStore } from "@/lib/mock/store";
+import { useStore } from "@/lib/store/api-store";
 import { hasPermission } from "@/lib/rbac";
 import { COURRIER_LABELS } from "@/lib/types";
 import { formatDate, formatDateTime, fullName } from "@/lib/utils";

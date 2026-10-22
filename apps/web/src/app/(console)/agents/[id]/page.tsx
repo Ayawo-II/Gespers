@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { Alert, Button, ButtonLink, Card, Empty, Field, PageHeader } from "@/components/ui";
 import { SituationBadge, StatutBadge } from "@/components/status";
-import { useStore } from "@/lib/mock/store";
+import { useStore } from "@/lib/store/api-store";
 import { hasPermission } from "@/lib/rbac";
 import {
   CATEGORIE_LABELS,
@@ -70,7 +70,7 @@ export default function AgentDetailPage() {
   // Formulaire Ajout Document
   const [docTitre, setDocTitre] = useState("");
   const [docType, setDocType] = useState<TypeDocument>("diplome");
-  const [docFichier, setDocFichier] = useState("");
+  const [docFichier, setDocFichier] = useState<File | null>(null);
 
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
@@ -95,14 +95,14 @@ export default function AgentDetailPage() {
     setShowCarriere((v) => !v);
   }
 
-  function onAvancement(e: FormEvent) {
+  async function onAvancement(e: FormEvent) {
     e.preventDefault();
     setError("");
     if (!avJustification.trim()) {
       setError("Une justification est obligatoire pour un avancement manuel.");
       return;
     }
-    enregistrerAvancement({
+    const res = await enregistrerAvancement({
       agentId: agent!.id,
       dateEffet: avDate,
       ancCategorie: agent!.categorie,
@@ -124,75 +124,104 @@ export default function AgentDetailPage() {
       ancienEchelon: agent!.echelon,
       nouvelEchelon: avEchelon || agent!.echelon,
     });
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
     setMsg("Avancement manuel enregistré et journalisé.");
     setAvJustification("");
     setShowCarriere(false);
   }
 
-  function onReplaceVersion(doc: DocumentDossier) {
-    const name = prompt("Nom du nouveau fichier (simulation)", `${doc.titre}-v${doc.versions.length + 1}.pdf`);
-    if (!name) return;
-    replaceDocumentVersion(doc.id, {
-      id: uid("dv"),
-      version: doc.versions.length + 1,
-      nomFichier: name,
-      tailleKo: 150,
-      mime: "application/pdf",
-      uploadedAt: new Date().toISOString(),
-      auteurId: currentCompte?.id ?? "cpt-systeme",
-    });
-    setMsg("Nouvelle version enregistrée. Les versions précédentes sont conservées.");
-  }
-
-  function onArchiveDoc(doc: DocumentDossier) {
-    archiveDocument(doc.id, "Archivage depuis la fiche agent");
-    setMsg("Document archivé. Il reste consultable dans l'historique.");
-  }
-
-  function onTitulariser(e: FormEvent) {
-    e.preventDefault();
-    if (!examDate || !examRef) return;
-    titulariser(agent!.id, { date: examDate, resultat: examRes, reference: examRef });
-    setMsg("Titularisation enregistrée avec succès.");
-  }
-
-  function onFin(e: FormEvent) {
-    e.preventDefault();
-    if (!finDate || !finMotif) return;
-    cloreParcours(agent!.id, { type: finType, date: finDate, motif: finMotif, reference: finRef || undefined });
-    setMsg("Fin de parcours enregistrée avec succès.");
-  }
-
-  function onAddDocument(e: FormEvent) {
-    e.preventDefault();
-    if (!docTitre.trim() || !docFichier.trim()) {
-      setError("Titre et nom de fichier sont obligatoires.");
-      return;
-    }
-    setError("");
-    saveDocument({
-      id: uid("doc"),
-      agentId: agent!.id,
-      personneId: agent!.id,
-      type: docType,
-      titre: docTitre,
-      archive: false,
-      createdAt: new Date().toISOString(),
-      versions: [
+  async function onReplaceVersion(doc: DocumentDossier) {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".pdf,.jpg,.jpeg,.png";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const res = await replaceDocumentVersion(
+        doc.id,
         {
           id: uid("dv"),
-          version: 1,
-          nomFichier: docFichier,
-          tailleKo: docFichier.length * 12 + 150,
-          mime: docFichier.endsWith(".pdf") ? "application/pdf" : "image/jpeg",
+          version: doc.versions.length + 1,
+          nomFichier: file.name,
+          tailleKo: Math.max(1, Math.round(file.size / 1024)),
+          mime: file.type || "application/octet-stream",
           uploadedAt: new Date().toISOString(),
           auteurId: currentCompte?.id ?? "cpt-systeme",
         },
-      ],
-    });
+        file,
+      );
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      setMsg("Nouvelle version enregistrée. Les versions précédentes sont conservées.");
+    };
+    input.click();
+  }
+
+  async function onArchiveDoc(doc: DocumentDossier) {
+    const res = await archiveDocument(doc.id, "Archivage depuis la fiche agent");
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    setMsg("Document archivé. Il reste consultable dans l'historique.");
+  }
+
+  async function onTitulariser(e: FormEvent) {
+    e.preventDefault();
+    if (!examDate || !examRef) return;
+    setError("");
+    const res = await titulariser(agent!.id, { date: examDate, resultat: examRes, reference: examRef });
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    setMsg("Titularisation enregistrée avec succès.");
+  }
+
+  async function onFin(e: FormEvent) {
+    e.preventDefault();
+    if (!finDate || !finMotif) return;
+    setError("");
+    const res = await cloreParcours(agent!.id, { type: finType, date: finDate, motif: finMotif, reference: finRef || undefined });
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    setMsg("Fin de parcours enregistrée avec succès.");
+  }
+
+  async function onAddDocument(e: FormEvent) {
+    e.preventDefault();
+    if (!docTitre.trim() || !docFichier) {
+      setError("Titre et fichier sont obligatoires.");
+      return;
+    }
+    setError("");
+    const res = await saveDocument(
+      {
+        id: uid("doc"),
+        agentId: agent!.id,
+        personneId: agent!.id,
+        type: docType,
+        titre: docTitre,
+        archive: false,
+        createdAt: new Date().toISOString(),
+        versions: [],
+      },
+      docFichier,
+    );
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
     setMsg(`Document "${docTitre}" ajouté au dossier numérique.`);
     setDocTitre("");
-    setDocFichier("");
+    setDocFichier(null);
   }
 
   const isStagiaire = agent.etatCarriere === "STAGIAIRE" || agent.situation === "stagiaire" || agent.situation === "STAGIAIRE";
@@ -301,10 +330,11 @@ export default function AgentDetailPage() {
                 <input value={docTitre} onChange={(e) => setDocTitre(e.target.value)} required />
               </Field>
             </div>
-            <Field label="Fichier" hint="Simulation : aucun envoi serveur">
+            <Field label="Fichier" hint="PDF ou image (téléversé au serveur)">
               <input
                 type="file"
-                onChange={(e) => setDocFichier(e.target.files?.[0]?.name ?? "")}
+                accept=".pdf,.jpg,.jpeg,.png"
+                onChange={(e) => setDocFichier(e.target.files?.[0] ?? null)}
                 required
               />
             </Field>

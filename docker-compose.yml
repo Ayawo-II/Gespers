@@ -57,7 +57,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:3001
+      API_INTERNAL_URL: http://api:3001
+      NEXT_PUBLIC_API_URL: /backend
     depends_on:
       - api
     volumes:

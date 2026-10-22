@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useMemo, useState } from "react";
 import { Alert, Button, Card, Empty, Field, PageHeader } from "@/components/ui";
-import { useStore } from "@/lib/mock/store";
+import { useStore } from "@/lib/store/api-store";
 import { hasPermission } from "@/lib/rbac";
 import { CONGE_LABELS, type TypeConge } from "@/lib/types";
 import { daysBetween, downloadText, formatDate, fullName, toCsv, todayIso, uid } from "@/lib/utils";
@@ -38,11 +38,11 @@ export default function CongesPage() {
     });
   }, [state.conges, state.agents, scopeIds, type, q]);
 
-  function onSubmit(e: FormEvent) {
+  async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
     setMsg("");
-    const res = saveConge({
+    const res = await saveConge({
       id: uid("cg"),
       agentId,
       type: congeType,

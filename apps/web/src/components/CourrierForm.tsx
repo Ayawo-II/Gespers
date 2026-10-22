@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Alert, Button, Field } from "@/components/ui";
-import { useStore } from "@/lib/mock/store";
+import { useStore } from "@/lib/store/api-store";
 import { hasPermission } from "@/lib/rbac";
 import { COURRIER_LABELS, SERVICES, type Courrier, type TypeCourrier } from "@/lib/types";
 import { todayIso, uid } from "@/lib/utils";
@@ -32,13 +32,13 @@ export function CourrierForm({ initial, isNew }: { initial?: Courrier; isNew: bo
     setForm((c) => ({ ...c, [key]: value }));
   }
 
-  function onSubmit(e: FormEvent) {
+  async function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (!canWrite) {
       setError("Vous n'êtes pas habilité à enregistrer un courrier.");
       return;
     }
-    const res = saveCourrier(
+    const res = await saveCourrier(
       { ...form, auteurId: form.auteurId || currentCompte?.id || "cpt-systeme" },
       isNew,
     );

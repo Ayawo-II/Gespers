@@ -2,7 +2,7 @@
 
 import { FormEvent, useMemo, useState } from "react";
 import { Alert, Badge, Button, Card, Empty, Field, PageHeader } from "@/components/ui";
-import { useStore } from "@/lib/mock/store";
+import { useStore } from "@/lib/store/api-store";
 import { hasPermission } from "@/lib/rbac";
 import { fullName, uid } from "@/lib/utils";
 
@@ -35,14 +35,14 @@ export default function DivisionsPage() {
 
   const totalSections = divisions.reduce((n, d) => n + d.sections.length, 0);
 
-  function onCreateDivision(e: FormEvent) {
+  async function onCreateDivision(e: FormEvent) {
     e.preventDefault();
     setError("");
     if (!divisionLibelle.trim()) {
       setError("Le libellé de la division est obligatoire.");
       return;
     }
-    const res = saveDivision(
+    const res = await saveDivision(
       {
         id: uid("div"),
         libelle: divisionLibelle.trim(),
@@ -60,14 +60,14 @@ export default function DivisionsPage() {
     setShowNewDivision(false);
   }
 
-  function onCreateSection(e: FormEvent, divisionId: string) {
+  async function onCreateSection(e: FormEvent, divisionId: string) {
     e.preventDefault();
     setError("");
     if (!sectionLibelle.trim()) {
       setError("Le libellé de la section est obligatoire.");
       return;
     }
-    const res = saveSection(
+    const res = await saveSection(
       {
         id: uid("sec"),
         libelle: sectionLibelle.trim(),

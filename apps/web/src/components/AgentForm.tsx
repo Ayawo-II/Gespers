@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Alert, Button, Field } from "@/components/ui";
-import { useStore } from "@/lib/mock/store";
+import { useStore } from "@/lib/store/api-store";
 import {
   CATEGORIE_LABELS,
   CLASSE_LABELS,
@@ -69,13 +69,13 @@ export function AgentForm({ initial, isNew }: { initial?: Agent; isNew: boolean 
     });
   }
 
-  function onSubmit(e: FormEvent) {
+  async function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (agent.email && !agent.email.includes("@")) {
       setError("Adresse e-mail invalide.");
       return;
     }
-    const res = saveAgent(
+    const res = await saveAgent(
       {
         ...agent,
         fonction: agent.fonction || agent.poste || "",

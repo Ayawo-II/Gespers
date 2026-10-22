@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Button, Card, Empty, PageHeader } from "@/components/ui";
-import { useStore } from "@/lib/mock/store";
+import { useStore } from "@/lib/store/api-store";
 import { downloadText, formatDateTime, toCsv } from "@/lib/utils";
 
 export default function AuditPage() {

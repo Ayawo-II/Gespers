@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Card, PageHeader } from "@/components/ui";
 import { PieChart } from "@/components/charts";
 import { SituationBadge, StatutBadge } from "@/components/status";
-import { useStore } from "@/lib/mock/store";
+import { useStore } from "@/lib/store/api-store";
 import { CLASSE_LABELS, ROLE_LABELS } from "@/lib/types";
 import { formatDate, fullName, isEligibleClasse, isEligibleEchelon, nextEchelonDate } from "@/lib/utils";
 import { agentsDeMaDivision, agentsDeMaSection } from "@/lib/visibility";

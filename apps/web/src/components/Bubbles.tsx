@@ -2,6 +2,8 @@
 
 import { useCallback, useRef, useState } from "react";
 
+const LOGO_SRC = "/radio_lome.jpg";
+
 type Bulle = {
   id: number;
   size: number;
@@ -24,6 +26,7 @@ type Eclatement = {
 };
 
 const MAX_BULLES = 18;
+const BULLES_MAX = 60;
 const DUREE_ECLATEMENT = 700;
 const APPARITION_ECLATE = 1400;
 
@@ -68,7 +71,7 @@ export function Bubbles() {
 
     setTimeout(() => {
       const id = prochainId.current++;
-      setBulles((prev) => (prev.length < MAX_BULLES ? [...prev, creerBulle(id)] : prev));
+      setBulles((prev) => (prev.length < BULLES_MAX ? [...prev, creerBulle(id)] : prev));
     }, APPARITION_ECLATE);
   }, []);
 
@@ -95,7 +98,10 @@ export function Bubbles() {
                 animationDelay: `${b.delay}s`,
               } as React.CSSProperties
             }
-          />
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img className="bubble-logo" src={LOGO_SRC} alt="" aria-hidden="true" />
+          </button>
         </span>
       ))}
 
@@ -106,6 +112,10 @@ export function Bubbles() {
           style={{ left: `${e.left}%`, bottom: `${e.bottom}%` }}
         >
           <span className="bubble-ring" style={{ width: e.size, height: e.size }} />
+          <span className="bubble-pop" style={{ width: e.size, height: e.size }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img className="bubble-logo" src={LOGO_SRC} alt="" aria-hidden="true" />
+          </span>
           {e.particules.map((p, i) => (
             <span
               key={i}

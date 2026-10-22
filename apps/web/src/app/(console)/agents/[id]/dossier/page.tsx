@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { Alert, Button, Card, Empty, Field, PageHeader } from "@/components/ui";
-import { useStore } from "@/lib/mock/store";
+import { useStore } from "@/lib/store/api-store";
 import { hasPermission } from "@/lib/rbac";
 import { DOCUMENT_LABELS, type DocumentDossier, type TypeDocument } from "@/lib/types";
 import { downloadText, formatDateTime, fullName, uid } from "@/lib/utils";
@@ -17,9 +17,10 @@ export default function DossierPage() {
   const agent = state.agents.find((a) => a.id === id);
   const [type, setType] = useState<TypeDocument>("piece_identite");
   const [titre, setTitre] = useState("");
-  const [fichier, setFichier] = useState("");
+  const [fichier, setFichier] = useState<File | null>(null);
   const [motif, setMotif] = useState("");
   const [msg, setMsg] = useState("");
+  const [error, setError] = useState("");
 
   if (!agent || !canSeeAgent(agent, currentCompte, currentAgent)) {
     return <Empty title="Dossier inaccessible" />;
@@ -28,55 +29,74 @@ export default function DossierPage() {
   const canWrite = currentCompte ? hasPermission(currentCompte.role, "agents.write") : false;
   const docs = state.documents.filter((d) => d.agentId === agent.id);
 
-  function onAdd(e: FormEvent) {
+  async function onAdd(e: FormEvent) {
     e.preventDefault();
-    if (!titre.trim() || !fichier.trim()) return;
-    const doc: DocumentDossier = {
-      id: uid("doc"),
-      agentId: agent!.id,
-      type,
-      titre,
-      archive: false,
-      createdAt: new Date().toISOString(),
-      versions: [
+    setError("");
+    if (!titre.trim() || !fichier) {
+      setError("Titre et fichier sont obligatoires.");
+      return;
+    }
+    const res = await saveDocument(
+      {
+        id: uid("doc"),
+        agentId: agent!.id,
+        personneId: agent!.id,
+        type,
+        titre,
+        archive: false,
+        createdAt: new Date().toISOString(),
+        versions: [],
+      },
+      fichier,
+    );
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    setTitre("");
+    setFichier(null);
+    setMsg("Fichier ajouté au dossier numérique.");
+  }
+
+  async function replace(doc: DocumentDossier) {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".pdf,.jpg,.jpeg,.png";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const res = await replaceDocumentVersion(
+        doc.id,
         {
           id: uid("dv"),
-          version: 1,
-          nomFichier: fichier,
-          tailleKo: 120,
-          mime: "application/pdf",
+          version: doc.versions.length + 1,
+          nomFichier: file.name,
+          tailleKo: Math.max(1, Math.round(file.size / 1024)),
+          mime: file.type || "application/octet-stream",
           uploadedAt: new Date().toISOString(),
           auteurId: currentCompte?.id ?? "cpt-systeme",
         },
-      ],
+        file,
+      );
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      setMsg("Nouvelle version enregistrée. Les versions précédentes sont conservées.");
     };
-    saveDocument(doc);
-    setTitre("");
-    setFichier("");
-    setMsg("Fichier ajouté au dossier (simulation de téléversement).");
+    input.click();
   }
 
-  function replace(doc: DocumentDossier) {
-    const name = prompt("Nom du nouveau fichier (simulation)", `${doc.titre}-v${doc.versions.length + 1}.pdf`);
-    if (!name) return;
-    replaceDocumentVersion(doc.id, {
-      id: uid("dv"),
-      version: doc.versions.length + 1,
-      nomFichier: name,
-      tailleKo: 150,
-      mime: "application/pdf",
-      uploadedAt: new Date().toISOString(),
-      auteurId: currentCompte?.id ?? "cpt-systeme",
-    });
-    setMsg("Nouvelle version enregistrée. Les versions précédentes sont conservées.");
-  }
-
-  function archive(doc: DocumentDossier) {
+  async function archive(doc: DocumentDossier) {
     if (!motif.trim()) {
       setMsg("Indiquez un motif d'archivage (aucune suppression définitive).");
       return;
     }
-    archiveDocument(doc.id, motif);
+    const res = await archiveDocument(doc.id, motif);
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
     setMsg("Document archivé. Il reste consultable dans l'historique.");
   }
 
@@ -106,6 +126,7 @@ export default function DossierPage() {
         </button>
       </PageHeader>
       {msg ? <Alert type={msg.includes("motif") ? "warn" : "ok"}>{msg}</Alert> : null}
+      {error ? <Alert type="error">{error}</Alert> : null}
       {canWrite ? (
         <Card>
           <h3>Téléverser un fichier</h3>
@@ -123,8 +144,13 @@ export default function DossierPage() {
               <Field label="Titre">
                 <input value={titre} onChange={(e) => setTitre(e.target.value)} required />
               </Field>
-              <Field label="Nom du fichier scanné" hint="Simulation : aucun envoi serveur">
-                <input value={fichier} onChange={(e) => setFichier(e.target.value)} placeholder="cni.pdf" required />
+              <Field label="Nom du fichier scanné" hint="PDF ou image (téléversé au serveur)">
+                <input
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  onChange={(e) => setFichier(e.target.files?.[0] ?? null)}
+                  required
+                />
               </Field>
             </div>
             <Button type="submit">Ajouter</Button>

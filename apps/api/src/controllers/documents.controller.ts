@@ -38,7 +38,7 @@ const listQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
   personneId: z.coerce.number().int().positive().optional(),
   typeDocId: z.coerce.number().int().positive().optional(),
-  dansRegistreGeneral: z.enum(["true", "false"]).optional().transform((value) => value === "true"),
+  dansRegistreGeneral: z.enum(["true", "false"]).optional(),
 });
 
 function parseId(value: string | string[] | undefined): number {
@@ -76,7 +76,9 @@ export async function listDocuments(req: Request, res: Response) {
       ? {}
       : { personnes: { some: { personneId } } }),
     ...(typeDocId === undefined ? {} : { typeDocId }),
-    ...(dansRegistreGeneral === undefined ? {} : { dansRegistreGeneral }),
+    ...(dansRegistreGeneral === undefined
+      ? {}
+      : { dansRegistreGeneral: dansRegistreGeneral === "true" }),
   };
   const [documents, total] = await prisma.$transaction([
     prisma.documents.findMany({

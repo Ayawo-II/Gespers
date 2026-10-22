@@ -49,6 +49,12 @@ const agentFields = {
     .nullable()
     .optional(),
   estArchive: z.boolean().optional(),
+  email: z.email().trim().max(200).nullable().optional(),
+  nationalite: z.string().trim().max(100).nullable().optional(),
+  situationMatrimoniale: z.string().trim().max(100).nullable().optional(),
+  formation: z.string().trim().max(200).nullable().optional(),
+  service: z.string().trim().max(200).nullable().optional(),
+  chefId: z.number().int().positive().nullable().optional(),
 };
 
 const createAgentSchema = z.object(agentFields);
@@ -78,13 +84,14 @@ const listAgentsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   q: z.string().trim().max(100).optional(),
-  estArchive: z
-    .enum(["true", "false"])
-    .optional()
-    .transform((value) => value === "true"),
+  estArchive: z.enum(["true", "false"]).optional(),
 });
 
 const agentIdSchema = z.coerce.number().int().positive();
+const agentInclude = {
+  affectations: { select: { sectionId: true } },
+} as const;
+
 const dateFields = [
   "dateNaissance",
   "dateEntree",
@@ -132,6 +139,19 @@ function handleAgentWriteError(error: unknown): never {
     throw new AppError("Ce matricule existe déjà.", 409, "DUPLICATE_MATRICULE");
   }
 
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "P2003"
+  ) {
+    throw new AppError(
+      "Le chef hiérarchique indiqué est introuvable.",
+      404,
+      "AGENT_REFERENCE_NOT_FOUND",
+    );
+  }
+
   throw error;
 }
 
@@ -140,7 +160,7 @@ export async function listAgents(req: Request, res: Response) {
   const user = getAuthenticatedUser(res);
   const where = {
     AND: [agentReadWhere(user)],
-    estArchive,
+    ...(estArchive === undefined ? {} : { estArchive: estArchive === "true" }),
     ...(q
       ? {
           OR: [
@@ -158,6 +178,7 @@ export async function listAgents(req: Request, res: Response) {
       orderBy: [{ nom: "asc" }, { prenoms: "asc" }, { id: "asc" }],
       skip: (page - 1) * limit,
       take: limit,
+      include: agentInclude,
     }),
     prisma.personnes.count({ where }),
   ]);
@@ -173,6 +194,7 @@ export async function getAgent(req: Request, res: Response) {
   const user = getAuthenticatedUser(res);
   const agent = await prisma.personnes.findFirst({
     where: { id, ...agentReadWhere(user) },
+    include: agentInclude,
   });
   if (!agent) {
     throw new AppError("Agent introuvable.", 404, "AGENT_NOT_FOUND");
@@ -184,7 +206,7 @@ export async function getAgent(req: Request, res: Response) {
 export async function createAgent(req: Request, res: Response) {
   const data = createAgentSchema.parse(req.body);
   try {
-    const agent = await prisma.personnes.create({ data });
+    const agent = await prisma.personnes.create({ data, include: agentInclude });
     res.status(201).json({ data: serializeAgent(agent) });
   } catch (error) {
     handleAgentWriteError(error);
@@ -195,7 +217,11 @@ export async function updateAgent(req: Request, res: Response) {
   const id = parseId(req.params.id);
   const data = updateAgentSchema.parse(req.body);
   try {
-    const agent = await prisma.personnes.update({ where: { id }, data });
+    const agent = await prisma.personnes.update({
+      where: { id },
+      data,
+      include: agentInclude,
+    });
     res.json({ data: serializeAgent(agent) });
   } catch (error) {
     if (

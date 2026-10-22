@@ -150,8 +150,16 @@ model Personnes {
   dateFinContrat          DateTime?     @db.Date
   dateDernierAvancement   DateTime?     @db.Date
   dateDepart              DateTime?     @db.Date
-  motifDepart             MotifDepart?
+  motifDepart            MotifDepart?
   estArchive              Boolean       @default(false)
+  email                   String?
+  nationalite             String?
+  situationMatrimoniale   String?
+  formation               String?
+  service                 String?
+  chefId                  Int?
+  chef                    Personnes?    @relation("Hierarchie", fields: [chefId], references: [id], onDelete: SetNull)
+  subordonnes             Personnes[]   @relation("Hierarchie")
 
   chefDeDivision Division?        @relation("ChefDivision")
   chefDeSection  Section?         @relation("ChefSection")
@@ -162,6 +170,8 @@ model Personnes {
   utilisateur Utilisateur?
   conges       Conge[]
   courriers    Courrier[]
+
+  @@index([chefId])
 }
 
 // --- Carrière ---

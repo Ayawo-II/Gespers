@@ -14,6 +14,7 @@ export function agentReadWhere(
       return {
         OR: [
           { id: user.personneId },
+          { chefId: user.personneId },
           {
             affectations: {
               some: { section: { chefId: user.personneId } },
@@ -27,6 +28,7 @@ export function agentReadWhere(
       return {
         OR: [
           { id: user.personneId },
+          { chefId: user.personneId },
           {
             affectations: {
               some: {

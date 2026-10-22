@@ -2,36 +2,37 @@
 
 import { FormEvent, useMemo, useState } from "react";
 import { Alert, Button, Card, Empty, Field, PageHeader } from "@/components/ui";
-import { useStore } from "@/lib/mock/store";
+import { useStore } from "@/lib/store/api-store";
 import { ROLE_LABELS, type Role } from "@/lib/types";
 import { fullName, uid } from "@/lib/utils";
-import { MOCK_PASSWORD } from "@/lib/mock/seed";
 
 export default function ComptesPage() {
   const { state, saveCompte, setCompteActif, resetPassword } = useStore();
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
   const [motif, setMotif] = useState<Record<string, string>>({});
-  const [identifiant, setIdentifiant] = useState("");
+  const [email, setEmail] = useState("");
   const [agentId, setAgentId] = useState("");
-  const [role, setRole] = useState<Role>("agent");
+  const [role, setRole] = useState<Role>("AGENT");
 
   const rows = useMemo(
     () => state.comptes.filter((c) => c.identifiant !== "systeme"),
     [state.comptes],
   );
   const agentsSansCompte = state.agents.filter(
-    (a) => !rows.some((c) => c.agentId === a.id) && a.situation !== "fin_parcours",
+    (a) => !rows.some((c) => c.agentId === a.id) && a.etatCarriere !== "SORTI",
   );
 
-  function onCreate(e: FormEvent) {
+  async function onCreate(e: FormEvent) {
     e.preventDefault();
     setError("");
-    const res = saveCompte(
+    setMsg("");
+    const res = await saveCompte(
       {
         id: uid("cpt"),
-        identifiant,
-        motDePasse: MOCK_PASSWORD,
+        identifiant: email,
+        email,
+        motDePasse: "",
         agentId,
         role,
         actif: true,
@@ -44,9 +45,39 @@ export default function ComptesPage() {
       setError(res.error);
       return;
     }
-    setMsg(`Compte créé. Mot de passe initial : ${MOCK_PASSWORD}`);
-    setIdentifiant("");
+    setMsg(
+      res.temporaryPassword
+        ? `Compte créé. Mot de passe temporaire : ${res.temporaryPassword}`
+        : "Compte créé. Un mot de passe temporaire a été généré.",
+    );
+    setEmail("");
     setAgentId("");
+  }
+
+  async function onSetActif(compteId: string, actif: boolean) {
+    setError("");
+    setMsg("");
+    if (!actif && !motif[compteId]?.trim()) {
+      setError("Un motif est obligatoire pour désactiver un compte.");
+      return;
+    }
+    const res = await setCompteActif(compteId, actif, motif[compteId]);
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    setMsg(actif ? "Compte réactivé." : "Compte désactivé.");
+  }
+
+  async function onResetPassword(compte: { id: string; identifiant: string }) {
+    setError("");
+    setMsg("");
+    const res = await resetPassword(compte.id);
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    setMsg(`Mot de passe réinitialisé pour ${compte.identifiant} : ${res.password}`);
   }
 
   return (
@@ -83,9 +114,6 @@ export default function ComptesPage() {
                       <td>
                         {c.actif ? "Actif" : "Inactif"}
                         {c.motifDesactivation ? <div className="muted">{c.motifDesactivation}</div> : null}
-                        {c.verrouilleJusqua ? (
-                          <div className="muted">Verrouillé jusqu’à {new Date(c.verrouilleJusqua).toLocaleString("fr-TG")}</div>
-                        ) : null}
                       </td>
                       <td>
                         <div className="actions" style={{ flexWrap: "wrap" }}>
@@ -96,38 +124,16 @@ export default function ComptesPage() {
                                 value={motif[c.id] ?? ""}
                                 onChange={(e) => setMotif((m) => ({ ...m, [c.id]: e.target.value }))}
                               />
-                              <Button
-                                variant="danger"
-                                onClick={() => {
-                                  if (!motif[c.id]?.trim()) {
-                                    setError("Un motif est obligatoire pour désactiver un compte.");
-                                    return;
-                                  }
-                                  setCompteActif(c.id, false, motif[c.id]);
-                                  setMsg("Compte désactivé.");
-                                }}
-                              >
+                              <Button variant="danger" onClick={() => onSetActif(c.id, false)}>
                                 Désactiver
                               </Button>
                             </>
                           ) : (
-                            <Button
-                              variant="secondary"
-                              onClick={() => {
-                                setCompteActif(c.id, true);
-                                setMsg("Compte réactivé.");
-                              }}
-                            >
+                            <Button variant="secondary" onClick={() => onSetActif(c.id, true)}>
                               Réactiver
                             </Button>
                           )}
-                          <Button
-                            variant="ghost"
-                            onClick={() => {
-                              const pwd = resetPassword(c.id);
-                              setMsg(`Mot de passe réinitialisé pour ${c.identifiant} : ${pwd}`);
-                            }}
-                          >
+                          <Button variant="ghost" onClick={() => onResetPassword(c)}>
                             Réinitialiser le mot de passe
                           </Button>
                         </div>
@@ -144,8 +150,14 @@ export default function ComptesPage() {
         <h3>Créer un compte</h3>
         <form className="form" onSubmit={onCreate} style={{ marginTop: 12 }}>
           <div className="form-row-3">
-            <Field label="Identifiant">
-              <input value={identifiant} onChange={(e) => setIdentifiant(e.target.value)} required />
+            <Field label="Adresse e-mail (identifiant)">
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="prenom.nom@radiolome.tg"
+                required
+              />
             </Field>
             <Field label="Agent">
               <select value={agentId} onChange={(e) => setAgentId(e.target.value)} required>
@@ -159,15 +171,17 @@ export default function ComptesPage() {
             </Field>
             <Field label="Rôle">
               <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
-                {Object.entries(ROLE_LABELS).map(([k, v]) => (
+                {["AGENT", "CHEF_SECTION", "CHEF_DIVISION", "RESPONSABLE_RH", "CHEF_PERSONNEL", "DG"].map((k) => (
                   <option key={k} value={k}>
-                    {v}
+                    {ROLE_LABELS[k] ?? k}
                   </option>
                 ))}
               </select>
             </Field>
           </div>
-          <p className="muted">Le mot de passe initial est {MOCK_PASSWORD} (démonstration).</p>
+          <p className="muted">
+            Un mot de passe temporaire est généré côté serveur et affiché après création.
+          </p>
           <Button type="submit">Créer</Button>
         </form>
       </Card>

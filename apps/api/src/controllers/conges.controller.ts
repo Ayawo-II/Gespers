@@ -3,7 +3,9 @@ import type { Request, Response } from "express";
 import { z } from "zod";
 import { prisma } from "../config/prisma.js";
 import { getAuthenticatedUser } from "../middlewares/authenticate.js";
+import { hasPermission } from "../middlewares/authorize.js";
 import { AppError } from "../middlewares/errorHandler.js";
+import { agentReadWhere } from "../services/agent-access.js";
 
 const idSchema = z.coerce.number().int().positive();
 const dateOnlySchema = z.iso
@@ -50,9 +52,23 @@ function formatConge<T extends { dateDebut: Date; dateFin: Date; createdAt: Date
   };
 }
 
+function congeScope(user: ReturnType<typeof getAuthenticatedUser>) {
+  if (hasPermission(user.role, "conges.read.all")) return {};
+  if (hasPermission(user.role, "conges.read.team")) {
+    return { personne: agentReadWhere(user) };
+  }
+  return { personneId: user.personneId };
+}
+
 export async function listConges(req: Request, res: Response) {
   const { page, limit, personneId } = listQuerySchema.parse(req.query);
-  const where = personneId === undefined ? {} : { personneId };
+  const user = getAuthenticatedUser(res);
+  const where = {
+    AND: [
+      congeScope(user),
+      ...(personneId === undefined ? [] : [{ personneId }]),
+    ],
+  };
   const [conges, total] = await prisma.$transaction([
     prisma.conge.findMany({
       where,
@@ -77,8 +93,9 @@ export async function listConges(req: Request, res: Response) {
 
 export async function getConge(req: Request, res: Response) {
   const id = parseId(req.params.id);
-  const conge = await prisma.conge.findUnique({
-    where: { id },
+  const user = getAuthenticatedUser(res);
+  const conge = await prisma.conge.findFirst({
+    where: { AND: [{ id }, congeScope(user)] },
     include: {
       personne: {
         select: { id: true, nom: true, prenoms: true, matricule: true },

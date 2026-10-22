@@ -31,12 +31,14 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "agents.read.team",
     "conges.read.self",
     "conges.read.team",
+    "organisation.read",
   ],
   CHEF_DIVISION: [
     "agents.read.self",
     "agents.read.team",
     "conges.read.self",
     "conges.read.team",
+    "organisation.read",
   ],
   RESPONSABLE_RH: [
     "dashboard.read",

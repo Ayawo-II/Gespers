@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ButtonLink, Card, Empty, PageHeader } from "@/components/ui";
-import { useStore } from "@/lib/mock/store";
+import { useStore } from "@/lib/store/api-store";
 import { hasPermission } from "@/lib/rbac";
 import { COURRIER_LABELS, type TypeCourrier } from "@/lib/types";
 import { formatDate, fullName } from "@/lib/utils";

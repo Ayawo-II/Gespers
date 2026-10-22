@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Card, PageHeader } from "@/components/ui";
 import { SituationBadge, StatutBadge } from "@/components/status";
-import { useStore } from "@/lib/mock/store";
+import { useStore } from "@/lib/store/api-store";
 import { landingPathForRole } from "@/lib/rbac";
 import {
   CLASSE_LABELS,

@@ -2,7 +2,7 @@
 
 import { PageHeader } from "@/components/ui";
 import { TeamSections } from "@/components/TeamSections";
-import { useStore } from "@/lib/mock/store";
+import { useStore } from "@/lib/store/api-store";
 import {
   agentsHorsSection,
   divisionDuChef,

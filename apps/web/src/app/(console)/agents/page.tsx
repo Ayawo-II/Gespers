@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ButtonLink, Card, Empty, PageHeader } from "@/components/ui";
 import { StatutBadge } from "@/components/status";
-import { useStore } from "@/lib/mock/store";
+import { useStore } from "@/lib/store/api-store";
 import { hasPermission } from "@/lib/rbac";
 import { CLASSE_LABELS, SERVICES } from "@/lib/types";
 import { downloadText, fullName, toCsv } from "@/lib/utils";

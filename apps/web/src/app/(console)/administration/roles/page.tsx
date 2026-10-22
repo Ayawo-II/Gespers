@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Alert, Card, PageHeader } from "@/components/ui";
-import { useStore } from "@/lib/mock/store";
+import { useStore } from "@/lib/store/api-store";
 import { ROLE_PERMS, type Permission } from "@/lib/rbac";
 import { ROLE_LABELS, type Role } from "@/lib/types";
 import { fullName } from "@/lib/utils";
@@ -93,9 +93,13 @@ export default function RolesPage() {
                     <td>
                       <select
                         value={c.role}
-                        onChange={(e) => {
-                          changeRole(c.id, e.target.value as Role);
-                          setMsg(`Rôle mis à jour pour ${c.identifiant}.`);
+                        onChange={async (e) => {
+                          const res = await changeRole(c.id, e.target.value as Role);
+                          setMsg(
+                            res.ok
+                              ? `Rôle mis à jour pour ${c.identifiant}.`
+                              : res.error,
+                          );
                         }}
                       >
                         {ROLES.map((r) => (
