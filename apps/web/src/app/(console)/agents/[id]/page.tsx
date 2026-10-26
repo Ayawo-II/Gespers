@@ -10,18 +10,20 @@ import { hasPermission } from "@/lib/rbac";
 import {
   CATEGORIE_LABELS,
   CLASSE_LABELS,
+  CONGE_LABELS,
   DOCUMENT_LABELS,
   MOTIF_DEPART_LABELS,
   RESULTAT_EXAMEN_LABELS,
   type Categorie,
   type Classe,
-  type DocumentDossier,
   type FinParcoursType,
   type NatureModif,
   type ResultatExamen,
+  type TypeConge,
   type TypeDocument,
 } from "@/lib/types";
-import { daysBetween, formatDate, formatDateTime, fullName, todayIso, uid } from "@/lib/utils";
+import { readPhotoFile } from "@/lib/photo";
+import { congeOverlap, daysBetween, formatDate, fullName, todayIso, uid } from "@/lib/utils";
 import { canSeeAgent } from "@/lib/visibility";
 import {
   IconFileText,
@@ -39,9 +41,10 @@ export default function AgentDetailPage() {
     titulariser,
     cloreParcours,
     saveDocument,
-    archiveDocument,
-    replaceDocumentVersion,
+    saveConge,
     enregistrerAvancement,
+    updateAgentPhoto,
+    updateMyPhoto,
   } = useStore();
 
   const agent = state.agents.find((a) => a.id === id);
@@ -49,6 +52,7 @@ export default function AgentDetailPage() {
   // Panneaux inline (sans redirection)
   const [showCarriere, setShowCarriere] = useState(false);
   const [showDossier, setShowDossier] = useState(false);
+  const [showConge, setShowConge] = useState(false);
 
   // Formulaire Avancement manuel (inline)
   const [avDate, setAvDate] = useState(todayIso());
@@ -72,19 +76,66 @@ export default function AgentDetailPage() {
   const [docType, setDocType] = useState<TypeDocument>("diplome");
   const [docFichier, setDocFichier] = useState<File | null>(null);
 
+  // Formulaire Déclaration de congé
+  const [congeType, setCongeType] = useState<TypeConge>("annuel");
+  const [congeDateDebut, setCongeDateDebut] = useState(todayIso());
+  const [congeDateFin, setCongeDateFin] = useState(todayIso());
+  const [congeReference, setCongeReference] = useState("");
+  const [congeFichier, setCongeFichier] = useState<File | null>(null);
+
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
+  const [photoBusy, setPhotoBusy] = useState(false);
 
-  if (!agent || !canSeeAgent(agent, currentCompte, currentAgent)) {
+  if (
+    !agent ||
+    !canSeeAgent(agent, currentCompte, currentAgent, {
+      affectations: state.affectations,
+      sections: state.sections,
+      divisions: state.divisions,
+    })
+  ) {
     return <Empty title="Agent introuvable" hint="Ce dossier n'existe pas ou n'est pas dans votre périmètre." />;
   }
 
   const canWrite = currentCompte ? hasPermission(currentCompte.role, "agents.write") : false;
+  const canWriteConge = currentCompte
+    ? hasPermission(currentCompte.role, "conges.write")
+    : false;
+  const isSelf = Boolean(currentAgent && currentAgent.id === agent.id);
+  const canEditPhoto =
+    isSelf ||
+    (currentCompte ? hasPermission(currentCompte.role, "agents.photo.write") : false);
   const chef = agent.chefId ? state.agents.find((a) => a.id === agent.chefId) : null;
+
+  async function onChangePhoto(file: File | undefined) {
+    if (!file || !agent) return;
+    setPhotoBusy(true);
+    setError("");
+    setMsg("");
+    try {
+      const photo = await readPhotoFile(file);
+      const result = isSelf
+        ? await updateMyPhoto(photo)
+        : await updateAgentPhoto(agent.id, photo);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setMsg("Photo de profil mise à jour.");
+    } catch {
+      setError("Impossible de lire l'image sélectionnée.");
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
 
   const docs = state.documents.filter((d) => d.agentId === agent.id);
   const avs = state.avancements.filter((a) => a.agentId === agent.id);
   const affs = state.affectations.filter((a) => a.agentId === agent.id);
+  const conges = state.conges
+    .filter((c) => c.agentId === agent.id)
+    .sort((a, b) => b.dateDebut.localeCompare(a.dateDebut));
 
   function toggleCarriere() {
     if (!showCarriere) {
@@ -131,44 +182,6 @@ export default function AgentDetailPage() {
     setMsg("Avancement manuel enregistré et journalisé.");
     setAvJustification("");
     setShowCarriere(false);
-  }
-
-  async function onReplaceVersion(doc: DocumentDossier) {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = ".pdf,.jpg,.jpeg,.png";
-    input.onchange = async () => {
-      const file = input.files?.[0];
-      if (!file) return;
-      const res = await replaceDocumentVersion(
-        doc.id,
-        {
-          id: uid("dv"),
-          version: doc.versions.length + 1,
-          nomFichier: file.name,
-          tailleKo: Math.max(1, Math.round(file.size / 1024)),
-          mime: file.type || "application/octet-stream",
-          uploadedAt: new Date().toISOString(),
-          auteurId: currentCompte?.id ?? "cpt-systeme",
-        },
-        file,
-      );
-      if (!res.ok) {
-        setError(res.error);
-        return;
-      }
-      setMsg("Nouvelle version enregistrée. Les versions précédentes sont conservées.");
-    };
-    input.click();
-  }
-
-  async function onArchiveDoc(doc: DocumentDossier) {
-    const res = await archiveDocument(doc.id, "Archivage depuis la fiche agent");
-    if (!res.ok) {
-      setError(res.error);
-      return;
-    }
-    setMsg("Document archivé. Il reste consultable dans l'historique.");
   }
 
   async function onTitulariser(e: FormEvent) {
@@ -224,6 +237,68 @@ export default function AgentDetailPage() {
     setDocFichier(null);
   }
 
+  async function onAddConge(e: FormEvent) {
+    e.preventDefault();
+    setError("");
+    setMsg("");
+    if (!congeReference.trim()) {
+      setError("La référence de la décision est obligatoire.");
+      return;
+    }
+    if (congeDateFin < congeDateDebut) {
+      setError("La date de fin doit être postérieure ou égale à la date de début.");
+      return;
+    }
+    if (congeOverlap(state.conges, agent!.id, congeDateDebut, congeDateFin).length > 0) {
+      setError("Cette période chevauche un congé déjà enregistré pour cet agent.");
+      return;
+    }
+
+    let pieceJointe: string | undefined;
+    if (congeFichier) {
+      const upload = await saveDocument(
+        {
+          id: uid("doc"),
+          agentId: agent!.id,
+          personneId: agent!.id,
+          type: "justificatif_conge",
+          titre: `Justificatif de congé — ${fullName(agent!)} du ${formatDate(congeDateDebut)} au ${formatDate(congeDateFin)}`,
+          reference: congeReference,
+          archive: false,
+          createdAt: new Date().toISOString(),
+          versions: [],
+        },
+        congeFichier,
+      );
+      if (!upload.ok) {
+        setError(upload.error);
+        return;
+      }
+      pieceJointe = upload.documentId ? `document:${upload.documentId}` : undefined;
+    }
+
+    const res = await saveConge({
+      id: uid("cg"),
+      agentId: agent!.id,
+      type: congeType,
+      dateDebut: congeDateDebut,
+      dateFin: congeDateFin,
+      dureeJours: daysBetween(congeDateDebut, congeDateFin),
+      referenceDecision: congeReference,
+      pieceJointe,
+      auteurId: currentCompte?.id ?? "cpt-systeme",
+      createdAt: new Date().toISOString(),
+    });
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    setMsg(`Congé enregistré pour ${fullName(agent!)}.`);
+    setCongeReference("");
+    setCongeFichier(null);
+    setShowConge(false);
+  }
+
   const isStagiaire = agent.etatCarriere === "STAGIAIRE" || agent.situation === "stagiaire" || agent.situation === "STAGIAIRE";
   const isSorti = agent.etatCarriere === "SORTI" || agent.situation === "fin_parcours" || agent.situation === "SORTI";
   const ancienneteJours = daysBetween(agent.dateEntree, todayIso());
@@ -242,8 +317,27 @@ export default function AgentDetailPage() {
           </Button>
         ) : null}
         {canWrite ? (
-          <Button variant="secondary" onClick={() => setShowDossier((v) => !v)}>
-            {showDossier ? "Fermer le dossier" : "Gérer le dossier"}
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setShowDossier((v) => !v);
+              setError("");
+              setMsg("");
+            }}
+          >
+            {showDossier ? "Fermer le dossier" : "Ajouter un document"}
+          </Button>
+        ) : null}
+        {canWriteConge ? (
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setShowConge((v) => !v);
+              setError("");
+              setMsg("");
+            }}
+          >
+            {showConge ? "Fermer le congé" : "Déclarer un congé"}
           </Button>
         ) : null}
       </PageHeader>
@@ -349,9 +443,8 @@ export default function AgentDetailPage() {
                   <tr>
                     <th>Titre</th>
                     <th>Type</th>
-                    <th>Versions</th>
-                    <th>État</th>
-                    <th></th>
+                    <th>Fichier</th>
+                    <th>Date d&apos;ajout</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -360,25 +453,11 @@ export default function AgentDetailPage() {
                       <td>{d.titre}</td>
                       <td>{DOCUMENT_LABELS[d.type]}</td>
                       <td>
-                        {d.versions.map((v) => (
-                          <div key={v.id} className="muted" style={{ fontSize: 12 }}>
-                            v{v.version} · {v.nomFichier} · {formatDateTime(v.uploadedAt)}
-                          </div>
-                        ))}
+                        <span className="muted" style={{ fontSize: 12 }}>
+                          {d.versions[0]?.nomFichier ?? "—"}
+                        </span>
                       </td>
-                      <td>{d.archive ? "Archivé" : "Actif"}</td>
-                      <td>
-                        {!d.archive ? (
-                          <div className="actions">
-                            <button type="button" className="btn btn-secondary" onClick={() => onReplaceVersion(d)}>
-                              Remplacer
-                            </button>
-                            <button type="button" className="btn btn-danger" onClick={() => onArchiveDoc(d)}>
-                              Archiver
-                            </button>
-                          </div>
-                        ) : null}
-                      </td>
+                      <td>{formatDate(d.createdAt)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -388,15 +467,116 @@ export default function AgentDetailPage() {
         </Card>
       ) : null}
 
+      {/* Panneau inline : Déclaration de congé */}
+      {canWriteConge && showConge ? (
+        <Card style={{ marginBottom: 16, borderLeft: "6px solid var(--red)" }}>
+          <h3 style={{ color: "var(--navy)", marginBottom: 12 }}>
+            Déclarer un congé — {fullName(agent)}
+          </h3>
+          <form className="form" onSubmit={onAddConge}>
+            <div className="form-row">
+              <Field label="Type de congé">
+                <select
+                  value={congeType}
+                  onChange={(e) => setCongeType(e.target.value as TypeConge)}
+                >
+                  {Object.entries(CONGE_LABELS).map(([k, v]) => (
+                    <option key={k} value={k}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Référence de la décision">
+                <input
+                  value={congeReference}
+                  onChange={(e) => setCongeReference(e.target.value)}
+                  required
+                />
+              </Field>
+            </div>
+            <div className="form-row-3">
+              <Field label="Date de début">
+                <input
+                  type="date"
+                  value={congeDateDebut}
+                  onChange={(e) => setCongeDateDebut(e.target.value)}
+                  required
+                />
+              </Field>
+              <Field label="Date de fin">
+                <input
+                  type="date"
+                  value={congeDateFin}
+                  onChange={(e) => setCongeDateFin(e.target.value)}
+                  required
+                />
+              </Field>
+              <Field label="Durée calculée">
+                <input
+                  readOnly
+                  value={`${daysBetween(congeDateDebut, congeDateFin)} jour(s)`}
+                />
+              </Field>
+            </div>
+            <Field
+              label="Pièce jointe (optionnel)"
+              hint="Justificatif PDF ou image, ajouté au dossier numérique."
+            >
+              <input
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png"
+                onChange={(e) => setCongeFichier(e.target.files?.[0] ?? null)}
+              />
+            </Field>
+            <Button type="submit">Enregistrer le congé</Button>
+          </form>
+        </Card>
+      ) : null}
+
       {/* Profil Agent Synthèse Header */}
       <Card style={{ padding: 24, borderLeft: "6px solid var(--green)" }}>
         <div style={{ display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap" }}>
-          <div
-            className="avatar"
-            style={{ width: 68, height: 68, fontSize: 26, background: "var(--navy)", color: "#ffffff" }}
-          >
-            {agent.prenoms[0]}
-            {agent.nom[0]}
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+            {agent.photo ? (
+              <img
+                src={agent.photo}
+                alt={`Photo de ${fullName(agent)}`}
+                style={{
+                  width: 68,
+                  height: 68,
+                  borderRadius: "50%",
+                  objectFit: "cover",
+                  border: "3px solid var(--green)",
+                }}
+              />
+            ) : (
+              <div
+                className="avatar"
+                style={{ width: 68, height: 68, fontSize: 26, background: "var(--navy)", color: "#ffffff" }}
+              >
+                {agent.prenoms[0]}
+                {agent.nom[0]}
+              </div>
+            )}
+            {canEditPhoto ? (
+              <label
+                className="btn btn-secondary"
+                style={{ cursor: "pointer", fontSize: 11, padding: "4px 10px" }}
+              >
+                {photoBusy ? "Envoi..." : "Changer la photo"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  disabled={photoBusy}
+                  onChange={(e) => {
+                    void onChangePhoto(e.target.files?.[0]);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            ) : null}
           </div>
           <div style={{ flex: 1, minWidth: 240 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -649,63 +829,81 @@ export default function AgentDetailPage() {
       <Card style={{ marginTop: 16 }}>
         <h3 style={{ color: "var(--navy)", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
           <IconFileText size={20} /> Dossier numérique & Pièces ({docs.length})
-          {canWrite ? (
-            <button
-              type="button"
-              className="btn btn-secondary"
-              style={{ marginLeft: "auto", fontSize: 13 }}
-              onClick={() => {
-                setShowDossier(true);
-                window.scrollTo({ top: 0, behavior: "smooth" });
-              }}
-            >
-              Gérer les versions et l&apos;archivage ↑
-            </button>
-          ) : null}
         </h3>
         {docs.length === 0 ? (
           <p className="muted">Aucune pièce numérique enregistrée pour cet agent.</p>
         ) : (
           <div className="table-wrap">
             <table>
+                <thead>
+                  <tr>
+                    <th>Titre de la pièce</th>
+                    <th>Type de document (TypeDoc)</th>
+                    <th>Fichier</th>
+                    <th>Date d&apos;ajout</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {docs.map((d) => (
+                    <tr key={d.id}>
+                      <td>
+                        <strong>{d.titre}</strong>
+                        {d.reference ? (
+                          <div className="muted" style={{ fontSize: 12 }}>Réf : {d.reference}</div>
+                        ) : null}
+                      </td>
+                      <td>
+                        <span className="badge badge-gray">{DOCUMENT_LABELS[d.type]}</span>
+                      </td>
+                      <td>
+                        <span className="muted" style={{ fontSize: 12 }}>
+                          <code>{d.versions[0]?.nomFichier ?? "—"}</code>
+                        </span>
+                      </td>
+                      <td>{formatDate(d.createdAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {/* SECTION 7 : Congés & permissions */}
+      <Card style={{ marginTop: 16 }}>
+        <h3 style={{ color: "var(--navy)", marginBottom: 16 }}>Congés &amp; permissions ({conges.length})</h3>
+        {conges.length === 0 ? (
+          <p className="muted">Aucun congé enregistré pour cet agent.</p>
+        ) : (
+          <div className="table-wrap">
+            <table>
               <thead>
                 <tr>
-                  <th>Titre de la pièce</th>
-                  <th>Type de document (TypeDoc)</th>
-                  <th>Versions</th>
-                  <th>État</th>
-                  <th>Date d&apos;ajout</th>
+                  <th>Type</th>
+                  <th>Période</th>
+                  <th>Durée</th>
+                  <th>Décision</th>
+                  <th>Justificatif</th>
                 </tr>
               </thead>
               <tbody>
-                {docs.map((d) => (
-                  <tr key={d.id}>
+                {conges.map((c) => (
+                  <tr key={c.id}>
+                    <td>{CONGE_LABELS[c.type] ?? c.type}</td>
                     <td>
-                      <strong>{d.titre}</strong>
-                      {d.reference ? (
-                        <div className="muted" style={{ fontSize: 12 }}>Réf : {d.reference}</div>
-                      ) : null}
+                      {formatDate(c.dateDebut)} → {formatDate(c.dateFin)}
+                    </td>
+                    <td>{c.dureeJours} j</td>
+                    <td>
+                      <code>{c.referenceDecision}</code>
                     </td>
                     <td>
-                      <span className="badge badge-gray">{DOCUMENT_LABELS[d.type]}</span>
-                    </td>
-                    <td>
-                      {d.versions.length === 0
-                        ? "—"
-                        : d.versions.map((v) => (
-                            <div key={v.id} className="muted" style={{ fontSize: 12 }}>
-                              v{v.version} · <code>{v.nomFichier}</code> · {v.tailleKo} Ko · {formatDateTime(v.uploadedAt)}
-                            </div>
-                          ))}
-                    </td>
-                    <td>
-                      {d.archive ? (
-                        <span className="badge badge-red">Archivé</span>
+                      {c.pieceJointe ? (
+                        <span className="badge badge-green">Joint</span>
                       ) : (
-                        <span className="badge badge-green">Actif</span>
+                        <span className="muted">—</span>
                       )}
                     </td>
-                    <td>{formatDate(d.createdAt)}</td>
                   </tr>
                 ))}
               </tbody>

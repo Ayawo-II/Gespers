@@ -6,9 +6,6 @@ import {
 } from "@prisma/client";
 import { prisma } from "../config/prisma.js";
 
-const AUTOMATIC_JOB_LOCK_ID = 20261021;
-const SYSTEM_IDENTIFIER = "systeme";
-
 export interface ManualAdvancementInput {
   nature: NatureModif;
   dateEffet: Date;
@@ -19,20 +16,6 @@ export interface ManualAdvancementInput {
   justification: string;
   modificateurId: number;
   modificateurEmail: string;
-}
-
-function addMonths(date: Date, months: number): Date {
-  const year = date.getUTCFullYear();
-  const month = date.getUTCMonth() + months;
-  const day = date.getUTCDate();
-  const lastDayOfTargetMonth = new Date(
-    Date.UTC(year, month + 1, 0),
-  ).getUTCDate();
-  return new Date(Date.UTC(year, month, Math.min(day, lastDayOfTargetMonth)));
-}
-
-function formatDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
 }
 
 function careerDetails(
@@ -142,113 +125,4 @@ export async function createManualAdvancement(
   });
 }
 
-export async function runAutomaticEchelonAdvancements(now = new Date()) {
-  const today = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
-  );
 
-  return prisma.$transaction(
-    async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(${AUTOMATIC_JOB_LOCK_ID})`;
-
-      const grid = await tx.grilleAvancement.findUnique({ where: { id: 1 } });
-      if (!grid) {
-        throw new Error("La grille d’avancement initiale est introuvable.");
-      }
-
-      const candidates = await tx.personnes.findMany({
-        where: {
-          estArchive: false,
-          etatCarriere: "TITULAIRE",
-          categorie: { not: null },
-          classe: { not: null },
-          echelon: { not: null },
-        },
-        select: {
-          id: true,
-          categorie: true,
-          classe: true,
-          echelon: true,
-          fonction: true,
-          dateEntree: true,
-          dateDernierAvancement: true,
-        },
-      });
-
-      let processed = 0;
-      for (const personne of candidates) {
-        if (
-          personne.categorie === null ||
-          personne.classe === null ||
-          personne.echelon === null
-        ) {
-          continue;
-        }
-        const anchor = personne.dateDernierAvancement ?? personne.dateEntree;
-        const dateEffet = addMonths(anchor, grid.dureeEchelonMois);
-        if (dateEffet > today) continue;
-
-        const currentEchelonIndex = grid.echelons.indexOf(
-          String(personne.echelon),
-        );
-        if (
-          currentEchelonIndex < 0 ||
-          currentEchelonIndex >= grid.echelons.length - 1
-        ) {
-          continue;
-        }
-        const nextEchelon = Number(grid.echelons[currentEchelonIndex + 1]);
-        if (!Number.isInteger(nextEchelon) || nextEchelon < 1) {
-          throw new Error(
-            `Échelon invalide dans la grille: ${grid.echelons[currentEchelonIndex + 1]}`,
-          );
-        }
-
-        const current = {
-          categorie: personne.categorie,
-          classe: personne.classe,
-          echelon: personne.echelon,
-        };
-        const next = { ...current, echelon: nextEchelon };
-        await tx.mods.create({
-          data: {
-            ancCategorie: current.categorie,
-            ancClasse: current.classe,
-            ancEchelon: current.echelon,
-            ancFonction: personne.fonction,
-            nvCategorie: next.categorie,
-            nvClasse: next.classe,
-            nvEchelon: next.echelon,
-            nvFonction: personne.fonction,
-            dateEffet,
-            nature: NatureModif.ECHELON,
-            mode: ModeModif.AUTOMATIQUE,
-            justification: `Avancement automatique après ${grid.dureeEchelonMois} mois.`,
-            personneId: personne.id,
-            modificateurId: null,
-          },
-        });
-        await tx.personnes.update({
-          where: { id: personne.id },
-          data: {
-            echelon: next.echelon,
-            dateDernierAvancement: dateEffet,
-          },
-        });
-        await tx.journalAudit.create({
-          data: {
-            identifiant: SYSTEM_IDENTIFIER,
-            action: "avancement_automatique",
-            cible: String(personne.id),
-            details: careerDetails(current, next),
-            justification: `Éligibilité atteinte le ${formatDate(dateEffet)}.`,
-          },
-        });
-        processed += 1;
-      }
-
-      return { processed };
-    },
-    { timeout: 120_000 },
-  );
-}

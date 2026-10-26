@@ -25,7 +25,6 @@ export async function getDashboardSummary(_req: Request, res: Response) {
     titulaires,
     effectifsByType,
     effectifsByEtat,
-    grille,
     eligibleForAdvancement,
     affectations,
   ] = await Promise.all([
@@ -42,7 +41,6 @@ export async function getDashboardSummary(_req: Request, res: Response) {
       where: { estArchive: false },
       _count: { _all: true },
     }),
-    prisma.grilleAvancement.findUnique({ where: { id: 1 }, select: { dureeEchelonMois: true } }),
     prisma.personnes.findMany({
       where: {
         estArchive: false,
@@ -67,7 +65,7 @@ export async function getDashboardSummary(_req: Request, res: Response) {
     }),
   ]);
 
-  const duration = grille?.dureeEchelonMois ?? 24;
+  const duration = 24;
   let enRetard = 0;
   let aSurveiller = 0;
   for (const agent of eligibleForAdvancement) {

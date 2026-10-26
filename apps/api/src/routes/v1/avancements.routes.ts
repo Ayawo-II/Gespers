@@ -4,14 +4,19 @@ import {
   listAgentAdvancements,
 } from "../../controllers/avancements.controller.js";
 import { requireAuth } from "../../middlewares/authenticate.js";
-import { requirePermission } from "../../middlewares/authorize.js";
+import { requireAnyPermission, requirePermission } from "../../middlewares/authorize.js";
 
 export const avancementsRoutes = Router();
 
 avancementsRoutes.use(requireAuth);
 avancementsRoutes.get(
   "/agents/:id/avancements",
-  requirePermission("avancements.read"),
+  requireAnyPermission(
+    "avancements.read",
+    "agents.read.self",
+    "agents.read.team",
+    "agents.read.all",
+  ),
   listAgentAdvancements,
 );
 avancementsRoutes.post(

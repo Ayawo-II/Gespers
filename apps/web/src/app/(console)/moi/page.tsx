@@ -9,34 +9,55 @@ import { landingPathForRole } from "@/lib/rbac";
 import {
   CLASSE_LABELS,
   CONGE_LABELS,
-  COURRIER_LABELS,
   DOCUMENT_LABELS,
   ROLE_LABELS,
 } from "@/lib/types";
+import { readPhotoFile } from "@/lib/photo";
 import { formatDate, fullName } from "@/lib/utils";
 import {
   IconBuilding,
   IconCalendar,
   IconFileText,
   IconKey,
-  IconMail,
   IconUser,
   IconUsers,
 } from "@/components/Icons";
 
 export default function MoiPage() {
-  const { state, currentAgent, currentCompte } = useStore();
+  const { state, currentAgent, currentCompte, updateMyPhoto } = useStore();
   const [activeTab, setActiveTab] = useState<
-    "mon_compte" | "carriere" | "mes_dossiers" | "conges_courriers"
+    "mon_compte" | "carriere" | "mes_dossiers" | "conges"
   >("mon_compte");
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoMsg, setPhotoMsg] = useState("");
+  const [photoError, setPhotoError] = useState("");
 
   if (!currentAgent || !currentCompte) return null;
+
+  async function onChangePhoto(file: File | undefined) {
+    if (!file || !currentAgent) return;
+    setPhotoBusy(true);
+    setPhotoMsg("");
+    setPhotoError("");
+    try {
+      const photo = await readPhotoFile(file);
+      const result = await updateMyPhoto(photo);
+      if (!result.ok) {
+        setPhotoError(result.error);
+        return;
+      }
+      setPhotoMsg("Photo de profil mise à jour.");
+    } catch {
+      setPhotoError("Impossible de lire l'image sélectionnée.");
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
 
   const docs = state.documents.filter((d) => d.agentId === currentAgent.id);
   const avs = state.avancements.filter((a) => a.agentId === currentAgent.id);
   const conges = state.conges.filter((c) => c.agentId === currentAgent.id);
   const affs = state.affectations.filter((a) => a.agentId === currentAgent.id);
-  const courriers = state.courriers.filter((c) => c.agentId === currentAgent.id);
   const chef = currentAgent.chefId ? state.agents.find((a) => a.id === currentAgent.chefId) : null;
 
   return (
@@ -49,12 +70,54 @@ export default function MoiPage() {
       {/* Profil Agent Synthèse Header */}
       <Card style={{ padding: 24, borderLeft: "6px solid var(--green)" }}>
         <div style={{ display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap" }}>
-          <div
-            className="avatar"
-            style={{ width: 64, height: 64, fontSize: 24, background: "var(--navy)", color: "#ffffff" }}
-          >
-            {currentAgent.prenoms[0]}
-            {currentAgent.nom[0]}
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+            {currentAgent.photo ? (
+              <img
+                src={currentAgent.photo}
+                alt={`Photo de ${fullName(currentAgent)}`}
+                style={{
+                  width: 64,
+                  height: 64,
+                  borderRadius: "50%",
+                  objectFit: "cover",
+                  border: "3px solid var(--green)",
+                }}
+              />
+            ) : (
+              <div
+                className="avatar"
+                style={{ width: 64, height: 64, fontSize: 24, background: "var(--navy)", color: "#ffffff" }}
+              >
+                {currentAgent.prenoms[0]}
+                {currentAgent.nom[0]}
+              </div>
+            )}
+            <label
+              className="btn btn-secondary"
+              style={{ cursor: "pointer", fontSize: 11, padding: "4px 10px" }}
+            >
+              {photoBusy ? "Envoi..." : "Changer la photo"}
+              <input
+                type="file"
+                accept="image/*"
+                hidden
+                disabled={photoBusy}
+                onChange={(e) => {
+                  void onChangePhoto(e.target.files?.[0]);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+            {photoMsg ? (
+              <span className="muted" style={{ fontSize: 12, color: "var(--green-dark)" }}>
+                {photoMsg}
+              </span>
+            ) : null}
+            {photoError ? (
+              <span className="muted" style={{ fontSize: 12, color: "var(--red-dark)" }}>
+                {photoError}
+              </span>
+            ) : null}
           </div>
           <div style={{ flex: 1, minWidth: 240 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -103,11 +166,11 @@ export default function MoiPage() {
         </button>
         <button
           type="button"
-          className={`tab ${activeTab === "conges_courriers" ? "active" : ""}`}
-          onClick={() => setActiveTab("conges_courriers")}
+          className={`tab ${activeTab === "conges" ? "active" : ""}`}
+          onClick={() => setActiveTab("conges")}
           style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
         >
-          <IconCalendar size={16} /> Congés & Courriers ({conges.length + courriers.length})
+          <IconCalendar size={16} /> Congés ({conges.length})
         </button>
       </div>
 
@@ -117,7 +180,7 @@ export default function MoiPage() {
           {/* Section Compte Utilisateur */}
           <Card>
             <h3 style={{ color: "var(--navy)", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
-              <IconKey size={20} /> Compte utilisateur Gespers
+              <IconKey size={20} /> Compte utilisateur Gespres_RL
             </h3>
             <div className="grid grid-3">
               <div>
@@ -328,13 +391,13 @@ export default function MoiPage() {
                   <tr>
                     <th>Titre du document</th>
                     <th>Type de pièce</th>
-                    <th>Fichier & Version</th>
+                    <th>Fichier</th>
                     <th>Date de numérisation</th>
                   </tr>
                 </thead>
                 <tbody>
                   {docs.map((d) => {
-                    const lastVer = d.versions[d.versions.length - 1];
+                    const lastVer = d.versions[0];
                     return (
                       <tr key={d.id}>
                         <td>
@@ -346,7 +409,7 @@ export default function MoiPage() {
                         <td>
                           {lastVer ? (
                             <span>
-                              <code>{lastVer.nomFichier}</code> ({lastVer.tailleKo} Ko, v{lastVer.version})
+                              <code>{lastVer.nomFichier}</code> ({lastVer.tailleKo} Ko)
                             </span>
                           ) : (
                             "—"
@@ -363,72 +426,38 @@ export default function MoiPage() {
         </Card>
       ) : null}
 
-      {/* ONGLET 4: Congés & Courriers */}
-      {activeTab === "conges_courriers" ? (
-        <div className="grid grid-2">
-          <Card>
-            <h3 style={{ color: "var(--navy)", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
-              <IconCalendar size={20} /> Historique des congés
-            </h3>
-            {conges.length === 0 ? (
-              <p className="muted">Aucun congé enregistré.</p>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {conges.map((c) => (
-                  <div
-                    key={c.id}
-                    style={{
-                      padding: "10px 12px",
-                      background: "var(--paper)",
-                      border: "1px solid var(--line)",
-                      borderRadius: 8,
-                    }}
-                  >
-                    <strong>{CONGE_LABELS[c.type]}</strong>
-                    <p className="muted" style={{ fontSize: 13, marginTop: 2 }}>
-                      Du {formatDate(c.dateDebut)} au {formatDate(c.dateFin)} ({c.dureeJours} jours)
-                    </p>
-                    <p style={{ fontSize: 12, marginTop: 4 }}>
-                      Réf : <code>{c.referenceDecision}</code>
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
-
-          <Card>
-            <h3 style={{ color: "var(--navy)", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
-              <IconMail size={20} /> Courriers & Actes associés
-            </h3>
-            {courriers.length === 0 ? (
-              <p className="muted">Aucun courrier ministériel adressé spécifiquement à votre dossier.</p>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {courriers.map((courrier) => (
-                  <div
-                    key={courrier.id}
-                    style={{
-                      padding: "10px 12px",
-                      background: "var(--paper)",
-                      border: "1px solid var(--line)",
-                      borderRadius: 8,
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <strong>{courrier.reference}</strong>
-                      <span className="badge badge-blue">{COURRIER_LABELS[courrier.type]}</span>
-                    </div>
-                    <p style={{ fontWeight: 600, fontSize: 13, marginTop: 4 }}>{courrier.objet}</p>
-                    <p className="muted" style={{ fontSize: 12, marginTop: 2 }}>
-                      Du {formatDate(courrier.date)} · Émetteur : {courrier.expediteur}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
-        </div>
+      {/* ONGLET 4: Congés */}
+      {activeTab === "conges" ? (
+        <Card>
+          <h3 style={{ color: "var(--navy)", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+            <IconCalendar size={20} /> Historique des congés
+          </h3>
+          {conges.length === 0 ? (
+            <p className="muted">Aucun congé enregistré.</p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {conges.map((c) => (
+                <div
+                  key={c.id}
+                  style={{
+                    padding: "10px 12px",
+                    background: "var(--paper)",
+                    border: "1px solid var(--line)",
+                    borderRadius: 8,
+                  }}
+                >
+                  <strong>{CONGE_LABELS[c.type]}</strong>
+                  <p className="muted" style={{ fontSize: 13, marginTop: 2 }}>
+                    Du {formatDate(c.dateDebut)} au {formatDate(c.dateFin)} ({c.dureeJours} jours)
+                  </p>
+                  <p style={{ fontSize: 12, marginTop: 4 }}>
+                    Réf : <code>{c.referenceDecision}</code>
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
       ) : null}
 
       <div style={{ marginTop: 12 }}>

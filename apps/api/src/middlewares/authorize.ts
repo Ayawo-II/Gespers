@@ -8,8 +8,10 @@ export type Permission =
   | "agents.read.team"
   | "agents.read.self"
   | "agents.write"
+  | "agents.photo.write"
   | "avancements.read"
   | "avancements.write"
+  | "grilles.read"
   | "grilles.write"
   | "courriers.read"
   | "courriers.write"
@@ -29,6 +31,7 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   CHEF_SECTION: [
     "agents.read.self",
     "agents.read.team",
+    "agents.photo.write",
     "conges.read.self",
     "conges.read.team",
     "organisation.read",
@@ -36,6 +39,7 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   CHEF_DIVISION: [
     "agents.read.self",
     "agents.read.team",
+    "agents.photo.write",
     "conges.read.self",
     "conges.read.team",
     "organisation.read",
@@ -45,8 +49,10 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "agents.read.all",
     "agents.read.self",
     "agents.write",
+    "agents.photo.write",
     "avancements.read",
     "avancements.write",
+    "grilles.read",
     "grilles.write",
     "courriers.read",
     "courriers.write",
@@ -65,8 +71,10 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "agents.read.all",
     "agents.read.self",
     "agents.write",
+    "agents.photo.write",
     "avancements.read",
     "avancements.write",
+    "grilles.read",
     "grilles.write",
     "courriers.read",
     "courriers.write",
@@ -84,7 +92,9 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "dashboard.read",
     "agents.read.all",
     "agents.read.self",
+    "agents.photo.write",
     "avancements.read",
+    "grilles.read",
     "courriers.read",
     "conges.read.all",
     "conges.read.self",

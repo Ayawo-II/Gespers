@@ -5,6 +5,6 @@ import { requirePermission } from "../../middlewares/authorize.js";
 
 export const grilleRoutes = Router();
 
-grilleRoutes.use(requireAuth, requirePermission("grilles.write"));
-grilleRoutes.get("/avancement", getGrille);
-grilleRoutes.put("/avancement", updateGrille);
+grilleRoutes.use(requireAuth);
+grilleRoutes.get("/avancement", requirePermission("grilles.read"), getGrille);
+grilleRoutes.put("/avancement", requirePermission("grilles.write"), updateGrille);

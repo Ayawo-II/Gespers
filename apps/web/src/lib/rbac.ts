@@ -6,8 +6,10 @@ export type Permission =
   | "agents.read.team"
   | "agents.read.self"
   | "agents.write"
+  | "agents.photo.write"
   | "avancements.read"
   | "avancements.write"
+  | "grilles.read"
   | "grilles.write"
   | "courriers.read"
   | "courriers.write"
@@ -28,6 +30,7 @@ export const ROLE_PERMS: Record<string, Permission[]> = {
   CHEF_SECTION: [
     "agents.read.self",
     "agents.read.team",
+    "agents.photo.write",
     "conges.read.self",
     "conges.read.team",
     "organisation.read",
@@ -35,6 +38,7 @@ export const ROLE_PERMS: Record<string, Permission[]> = {
   CHEF_DIVISION: [
     "agents.read.self",
     "agents.read.team",
+    "agents.photo.write",
     "conges.read.self",
     "conges.read.team",
     "organisation.read",
@@ -44,8 +48,10 @@ export const ROLE_PERMS: Record<string, Permission[]> = {
     "agents.read.all",
     "agents.read.self",
     "agents.write",
+    "agents.photo.write",
     "avancements.read",
     "avancements.write",
+    "grilles.read",
     "grilles.write",
     "courriers.read",
     "courriers.write",
@@ -64,8 +70,10 @@ export const ROLE_PERMS: Record<string, Permission[]> = {
     "agents.read.all",
     "agents.read.self",
     "agents.write",
+    "agents.photo.write",
     "avancements.read",
     "avancements.write",
+    "grilles.read",
     "grilles.write",
     "courriers.read",
     "courriers.write",
@@ -83,7 +91,9 @@ export const ROLE_PERMS: Record<string, Permission[]> = {
     "dashboard.read",
     "agents.read.all",
     "agents.read.self",
+    "agents.photo.write",
     "avancements.read",
+    "grilles.read",
     "courriers.read",
     "conges.read.all",
     "conges.read.self",
@@ -96,6 +106,7 @@ export const ROLE_PERMS: Record<string, Permission[]> = {
   chef: [
     "agents.read.self",
     "agents.read.team",
+    "agents.photo.write",
     "conges.read.self",
     "conges.read.team",
     "organisation.read",
@@ -105,8 +116,10 @@ export const ROLE_PERMS: Record<string, Permission[]> = {
     "agents.read.all",
     "agents.read.self",
     "agents.write",
+    "agents.photo.write",
     "avancements.read",
     "avancements.write",
+    "grilles.read",
     "grilles.write",
     "courriers.read",
     "courriers.write",
@@ -125,8 +138,10 @@ export const ROLE_PERMS: Record<string, Permission[]> = {
     "agents.read.all",
     "agents.read.self",
     "agents.write",
+    "agents.photo.write",
     "avancements.read",
     "avancements.write",
+    "grilles.read",
     "grilles.write",
     "courriers.read",
     "courriers.write",
@@ -144,7 +159,9 @@ export const ROLE_PERMS: Record<string, Permission[]> = {
     "dashboard.read",
     "agents.read.all",
     "agents.read.self",
+    "agents.photo.write",
     "avancements.read",
+    "grilles.read",
     "courriers.read",
     "conges.read.all",
     "conges.read.self",
@@ -174,11 +191,29 @@ export function landingPathForRole(role: Role | string): string {
 export const NAV_PATHS_BY_ROLE: Partial<Record<string, readonly string[]>> = {
   AGENT: ["/moi", "/mon-dossier"],
   agent: ["/moi", "/mon-dossier"],
-  CHEF_SECTION: ["/moi", "/mon-dossier", "/ma-section"],
-  chef: ["/moi", "/mon-dossier", "/ma-section"],
-  CHEF_DIVISION: ["/moi", "/mon-dossier", "/ma-division"],
-  DG: ["/tableau-de-bord", "/moi", "/mon-dossier", "/agents", "/divisions", "/courriers"],
-  dg: ["/tableau-de-bord", "/moi", "/mon-dossier", "/agents", "/divisions", "/courriers"],
+  CHEF_SECTION: ["/moi", "/mon-dossier", "/ma-section", "/agents", "/recherche", "/conges"],
+  chef: ["/moi", "/mon-dossier", "/ma-section", "/agents", "/recherche", "/conges"],
+  CHEF_DIVISION: ["/moi", "/mon-dossier", "/ma-division", "/agents", "/recherche", "/conges"],
+  DG: [
+    "/tableau-de-bord",
+    "/moi",
+    "/mon-dossier",
+    "/agents",
+    "/divisions",
+    "/courriers",
+    "/conges",
+    "/recherche",
+  ],
+  dg: [
+    "/tableau-de-bord",
+    "/moi",
+    "/mon-dossier",
+    "/agents",
+    "/divisions",
+    "/courriers",
+    "/conges",
+    "/recherche",
+  ],
   RESPONSABLE_RH: [
     "/tableau-de-bord",
     "/moi",
@@ -186,6 +221,12 @@ export const NAV_PATHS_BY_ROLE: Partial<Record<string, readonly string[]>> = {
     "/agents",
     "/courriers",
     "/divisions",
+    "/conges",
+    "/recherche",
+    "/administration/comptes",
+    "/administration/roles",
+    "/administration/audit",
+    "/parametres/grilles",
   ],
   rh: [
     "/tableau-de-bord",
@@ -194,6 +235,12 @@ export const NAV_PATHS_BY_ROLE: Partial<Record<string, readonly string[]>> = {
     "/agents",
     "/courriers",
     "/divisions",
+    "/conges",
+    "/recherche",
+    "/administration/comptes",
+    "/administration/roles",
+    "/administration/audit",
+    "/parametres/grilles",
   ],
   CHEF_PERSONNEL: [
     "/tableau-de-bord",
@@ -202,6 +249,12 @@ export const NAV_PATHS_BY_ROLE: Partial<Record<string, readonly string[]>> = {
     "/agents",
     "/courriers",
     "/divisions",
+    "/conges",
+    "/recherche",
+    "/administration/comptes",
+    "/administration/roles",
+    "/administration/audit",
+    "/parametres/grilles",
   ],
   chef_personnel: [
     "/tableau-de-bord",
@@ -210,6 +263,12 @@ export const NAV_PATHS_BY_ROLE: Partial<Record<string, readonly string[]>> = {
     "/agents",
     "/courriers",
     "/divisions",
+    "/conges",
+    "/recherche",
+    "/administration/comptes",
+    "/administration/roles",
+    "/administration/audit",
+    "/parametres/grilles",
   ],
 };
 
@@ -243,7 +302,9 @@ export function canAccessPath(role: Role | string, pathname: string): boolean {
       hasPermission(role, "agents.read.team")
     );
   }
-  if (pathname.startsWith("/parametres/grilles")) return hasPermission(role, "grilles.write");
+  if (pathname.startsWith("/parametres/grilles")) {
+    return hasPermission(role, "grilles.read") || hasPermission(role, "grilles.write");
+  }
   if (pathname.startsWith("/avancements")) return hasPermission(role, "avancements.read");
   if (pathname.startsWith("/courriers")) return hasPermission(role, "courriers.read");
   if (pathname.startsWith("/conges")) {

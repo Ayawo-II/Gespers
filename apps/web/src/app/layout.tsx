@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Gespers – Radio Lomé",
+  title: "Gespres_RL – Radio Lomé",
   description: "Plateforme de gestion administrative et de suivi des agents de Radio Lomé",
 };
 

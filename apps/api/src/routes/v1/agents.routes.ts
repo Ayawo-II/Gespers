@@ -4,6 +4,8 @@ import {
   getAgent,
   listAgents,
   updateAgent,
+  updateAgentPhoto,
+  updateMyPhoto,
 } from "../../controllers/agents.controller.js";
 import { requireAuth } from "../../middlewares/authenticate.js";
 import {
@@ -23,4 +25,6 @@ const requireAgentReadAccess = requireAnyPermission(
 agentsRoutes.get("/", requireAgentReadAccess, listAgents);
 agentsRoutes.get("/:id", requireAgentReadAccess, getAgent);
 agentsRoutes.post("/", requirePermission("agents.write"), createAgent);
+agentsRoutes.patch("/me/photo", requirePermission("agents.read.self"), updateMyPhoto);
+agentsRoutes.patch("/:id/photo", requirePermission("agents.photo.write"), updateAgentPhoto);
 agentsRoutes.patch("/:id", requirePermission("agents.write"), updateAgent);

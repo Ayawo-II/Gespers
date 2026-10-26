@@ -20,6 +20,7 @@ export default function DivisionsPage() {
 
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const divisions = useMemo(() => {
     const agentsById = new Map(state.agents.map((a) => [a.id, a]));
@@ -40,6 +41,10 @@ export default function DivisionsPage() {
     setError("");
     if (!divisionLibelle.trim()) {
       setError("Le libellé de la division est obligatoire.");
+      return;
+    }
+    if (!divisionChefId) {
+      setError("Le chef de division est obligatoire.");
       return;
     }
     const res = await saveDivision(
@@ -65,6 +70,10 @@ export default function DivisionsPage() {
     setError("");
     if (!sectionLibelle.trim()) {
       setError("Le libellé de la section est obligatoire.");
+      return;
+    }
+    if (!sectionChefId) {
+      setError("Le chef de section est obligatoire.");
       return;
     }
     const res = await saveSection(
@@ -127,9 +136,13 @@ export default function DivisionsPage() {
                   required
                 />
               </Field>
-              <Field label="Chef de division (optionnel)">
-                <select value={divisionChefId} onChange={(e) => setDivisionChefId(e.target.value)}>
-                  <option value="">Non renseigné</option>
+              <Field label="Chef de division">
+                <select
+                  value={divisionChefId}
+                  onChange={(e) => setDivisionChefId(e.target.value)}
+                  required
+                >
+                  <option value="">Sélectionner un agent…</option>
                   {state.agents.map((a) => (
                     <option key={a.id} value={a.id}>
                       {fullName(a)} — {a.fonction || a.poste}
@@ -151,7 +164,11 @@ export default function DivisionsPage() {
         <div className="grid-2">
           {divisions.map((d) => (
             <Card key={d.id}>
-              <div className="page-head">
+              <div
+                className="page-head"
+                style={{ cursor: "pointer" }}
+                onClick={() => setExpandedId(expandedId === d.id ? null : d.id)}
+              >
                 <div>
                   <h2>{d.libelle}</h2>
                   <p>
@@ -160,62 +177,78 @@ export default function DivisionsPage() {
                 </div>
                 <div className="actions">
                   <Badge tone="green">{d.effectif} agent{d.effectif > 1 ? "s" : ""}</Badge>
+                  <Badge tone="gray">{d.sections.length} section{d.sections.length > 1 ? "s" : ""}</Badge>
                   {canWrite ? (
-                    <Button variant="secondary" onClick={() => toggleSectionForm(d.id)}>
+                    <Button
+                      variant="secondary"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleSectionForm(d.id);
+                        setExpandedId(d.id);
+                      }}
+                    >
                       {sectionFormFor === d.id ? "Annuler" : "Ajouter une section"}
                     </Button>
                   ) : null}
                 </div>
               </div>
 
-              {canWrite && sectionFormFor === d.id ? (
-                <form className="form" onSubmit={(e) => onCreateSection(e, d.id)} style={{ marginBottom: 12 }}>
-                  <div className="form-row">
-                    <Field label="Libellé de la section">
-                      <input
-                        value={sectionLibelle}
-                        onChange={(e) => setSectionLibelle(e.target.value)}
-                        placeholder="Ex: Section reportages"
-                        required
-                      />
-                    </Field>
-                    <Field label="Chef de section (optionnel)">
-                      <select value={sectionChefId} onChange={(e) => setSectionChefId(e.target.value)}>
-                        <option value="">Non renseigné</option>
-                        {state.agents.map((a) => (
-                          <option key={a.id} value={a.id}>
-                            {fullName(a)} — {a.fonction || a.poste}
-                          </option>
-                        ))}
-                      </select>
-                    </Field>
-                  </div>
-                  <Button type="submit">Ajouter la section</Button>
-                </form>
-              ) : null}
+              {expandedId === d.id ? (
+                <>
+                  {canWrite && sectionFormFor === d.id ? (
+                    <form className="form" onSubmit={(e) => onCreateSection(e, d.id)} style={{ marginBottom: 12 }}>
+                      <div className="form-row">
+                        <Field label="Libellé de la section">
+                          <input
+                            value={sectionLibelle}
+                            onChange={(e) => setSectionLibelle(e.target.value)}
+                            placeholder="Ex: Section reportages"
+                            required
+                          />
+                        </Field>
+                        <Field label="Chef de section">
+                          <select
+                            value={sectionChefId}
+                            onChange={(e) => setSectionChefId(e.target.value)}
+                            required
+                          >
+                            <option value="">Sélectionner un agent…</option>
+                            {state.agents.map((a) => (
+                              <option key={a.id} value={a.id}>
+                                {fullName(a)} – {a.fonction || a.poste}
+                              </option>
+                            ))}
+                          </select>
+                        </Field>
+                      </div>
+                      <Button type="submit">Ajouter la section</Button>
+                    </form>
+                  ) : null}
 
-              {d.sections.length === 0 ? (
-                <p className="muted">Aucune section.</p>
-              ) : (
-                <div className="table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Section</th>
-                        <th>Chef de section</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {d.sections.map((s) => (
-                        <tr key={s.id}>
-                          <td>{s.libelle}</td>
-                          <td>{s.chef ? fullName(s.chef) : <span className="muted">—</span>}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                  {d.sections.length === 0 ? (
+                    <p className="muted">Aucune section.</p>
+                  ) : (
+                    <div className="table-wrap">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Section</th>
+                            <th>Chef de section</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {d.sections.map((s) => (
+                            <tr key={s.id}>
+                              <td>{s.libelle}</td>
+                              <td>{s.chef ? fullName(s.chef) : <span className="muted">–</span>}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
+              ) : null}
             </Card>
           ))}
         </div>

@@ -6,8 +6,8 @@ import { ButtonLink, Card, Empty, PageHeader } from "@/components/ui";
 import { StatutBadge } from "@/components/status";
 import { useStore } from "@/lib/store/api-store";
 import { hasPermission } from "@/lib/rbac";
-import { CLASSE_LABELS, SERVICES } from "@/lib/types";
-import { downloadText, fullName, toCsv } from "@/lib/utils";
+import { CLASSE_LABELS } from "@/lib/types";
+import { fullName } from "@/lib/utils";
 import { visibleAgents } from "@/lib/visibility";
 
 export default function AgentsPage() {
@@ -20,7 +20,11 @@ export default function AgentsPage() {
   const canExport = currentCompte ? hasPermission(currentCompte.role, "export") : false;
 
   const rows = useMemo(() => {
-    return visibleAgents(state.agents, currentCompte, currentAgent).filter((a) => {
+    return visibleAgents(state.agents, currentCompte, currentAgent, {
+      affectations: state.affectations,
+      sections: state.sections,
+      divisions: state.divisions,
+    }).filter((a) => {
       const hay = `${a.nom} ${a.prenoms} ${a.matricule} ${a.fonction || a.poste}`.toLowerCase();
       if (q && !hay.includes(q.toLowerCase())) return false;
       if (typeAgentFilter) {
@@ -28,12 +32,22 @@ export default function AgentsPage() {
         const agentTypeNorm = String(a.typeAgent || a.statut).toUpperCase();
         if (normFilter === "FONCTIONNAIRE" && agentTypeNorm !== "FONCTIONNAIRE") return false;
         if (normFilter === "CONTRACTUEL" && agentTypeNorm !== "CONTRACTUEL") return false;
-        if (normFilter === "PIVOTE" && agentTypeNorm !== "PIVOTE" && agentTypeNorm !== "PIGISTE") return false;
+        if (normFilter === "PIGISTE" && agentTypeNorm !== "PIGISTE") return false;
       }
       if (service && a.service !== service) return false;
       return true;
     });
-  }, [state.agents, currentCompte, currentAgent, q, typeAgentFilter, service]);
+  }, [
+    state.agents,
+    currentCompte,
+    currentAgent,
+    q,
+    typeAgentFilter,
+    service,
+    state.affectations,
+    state.sections,
+    state.divisions,
+  ]);
 
   return (
     <>
@@ -41,25 +55,15 @@ export default function AgentsPage() {
         {canExport ? (
           <button
             className="btn btn-secondary"
-            onClick={() =>
-              downloadText(
-                "agents-radio-lome.csv",
-                toCsv(
-                  rows.map((a) => ({
-                    matricule: a.matricule,
-                    nom: a.nom,
-                    prenoms: a.prenoms,
-                    typeAgent: a.typeAgent || a.statut,
-                    etatCarriere: a.etatCarriere || a.situation,
-                    service: a.service ?? "",
-                    fonction: a.fonction || a.poste || "",
-                    categorie: a.categorie,
-                    classe: a.classe,
-                    echelon: a.echelon,
-                  })),
-                ),
-              )
-            }
+            onClick={async () => {
+              try {
+                const { apiDownload, triggerBrowserDownload } = await import("@/services/api");
+                const blob = await apiDownload("/api/v1/exports/agents.csv");
+                triggerBrowserDownload(blob, "agents-radio-lome.csv");
+              } catch (error) {
+                console.error(error);
+              }
+            }}
           >
             Exporter CSV
           </button>
@@ -73,12 +77,14 @@ export default function AgentsPage() {
             <option value="">Tous les statuts d&apos;agent</option>
             <option value="FONCTIONNAIRE">Fonctionnaire</option>
             <option value="CONTRACTUEL">Contractuel</option>
-            <option value="PIVOTE">Pigiste (Pivoté)</option>
+            <option value="PIGISTE">Pigiste (Pivoté)</option>
           </select>
           <select value={service} onChange={(e) => setService(e.target.value)}>
             <option value="">Tous les services</option>
-            {SERVICES.map((s) => (
-              <option key={s}>{s}</option>
+            {state.divisions.map((d) => (
+              <option key={d.id} value={d.libelle}>
+                {d.libelle}
+              </option>
             ))}
           </select>
         </div>

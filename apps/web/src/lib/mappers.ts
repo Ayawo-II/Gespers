@@ -1,12 +1,16 @@
 import type {
+  Affectation,
   Agent,
   Avancement,
   Compte,
   Conge,
   Courrier,
+  Division,
   DocumentDossier,
   EntreeAudit,
+  ResultatExamen,
   Role,
+  Section,
   Titularisation,
   TypeConge,
   TypeCourrier,
@@ -112,11 +116,13 @@ const COURRIER_TO_API: Record<string, TypeCourrier> = {
   entrant: "entrant",
   sortant: "sortant",
   circulaire: "circulaire",
-  arrete_ministeriel: "arrete_ministeriel",
+  arrete_ministeriel: "courrier_simple",
+  courrier_simple: "courrier_simple",
   ENTRANT: "entrant",
   SORTANT: "sortant",
   CIRCULAIRE: "circulaire",
-  ARRETE_MINISTERIEL: "arrete_ministeriel",
+  ARRETE_MINISTERIEL: "courrier_simple",
+  COURRIER_SIMPLE: "courrier_simple",
 };
 
 export function courrierTypeToApi(value: unknown): string {
@@ -158,6 +164,10 @@ export function typeDocTypeFromLabel(libelle: string): TypeDocument {
 }
 
 export function mapAgent(a: ApiRecord): Agent {
+  const titularisation = (a.titularisation as ApiRecord | null | undefined) ?? null;
+  const dateDepart = optStr(a.dateDepart);
+  const affectations = Array.isArray(a.affectations) ? (a.affectations as ApiRecord[]) : [];
+  const affectationSectionId = affectations[0]?.sectionId;
   return {
     id: str(a.id),
     nom: str(a.nom),
@@ -184,9 +194,12 @@ export function mapAgent(a: ApiRecord): Agent {
     dateFinStagePrevue: (a.dateFinStagePrevue as string | null) ?? null,
     dateFinContrat: (a.dateFinContrat as string | null) ?? null,
     dateDernierAvancement: (a.dateDernierAvancement as string | null) ?? null,
-    dateDepart: (a.dateDepart as string | null) ?? null,
+    dateDepart,
     motifDepart: (a.motifDepart as Agent["motifDepart"]) ?? null,
     estArchive: (a.estArchive as boolean) ?? false,
+    membreAral: (a.membreAral as boolean) ?? false,
+    photo: (a.photo as string) ?? undefined,
+    sectionId: affectationSectionId != null ? String(affectationSectionId) : undefined,
     email: optStr(a.email),
     chefId: a.chefId ? str(a.chefId) : undefined,
     service: optStr(a.service),
@@ -197,7 +210,48 @@ export function mapAgent(a: ApiRecord): Agent {
     nationalite: optStr(a.nationalite),
     situationMatrimoniale: optStr(a.situationMatrimoniale),
     formation: optStr(a.formation),
+    dateTitularisation: titularisation ? optStr(titularisation.dateEffet) : undefined,
+    examenTitularisation: titularisation
+      ? {
+          date: str(titularisation.dateExamen),
+          resultat: titularisation.resultat as ResultatExamen,
+          reference: str(titularisation.referenceDecision),
+        }
+      : undefined,
+    finParcours: dateDepart
+      ? {
+          type: ((a.motifDepart as Agent["motifDepart"]) ?? "AUTRE") as NonNullable<
+            Agent["finParcours"]
+          >["type"],
+          date: dateDepart,
+          motif: "",
+        }
+      : undefined,
   };
+}
+
+export function mapAffectations(
+  a: ApiRecord,
+  sections: Section[],
+  divisions: Division[],
+): Affectation[] {
+  const raw = Array.isArray(a.affectations) ? (a.affectations as ApiRecord[]) : [];
+  return raw.map((aff, index) => {
+    const sectionId = aff.sectionId ? str(aff.sectionId) : undefined;
+    const section = sectionId ? sections.find((s) => s.id === sectionId) : undefined;
+    const division = section ? divisions.find((d) => d.id === section.divisionId) : undefined;
+    return {
+      id: `${str(a.id)}-${sectionId ?? index}`,
+      agentId: str(a.id),
+      personneId: str(a.id),
+      sectionId,
+      service: section
+        ? division
+          ? `${division.libelle} · ${section.libelle}`
+          : section.libelle
+        : undefined,
+    };
+  });
 }
 
 export function agentToApiPayload(agent: Agent, isNew: boolean): Record<string, unknown> {
@@ -220,7 +274,10 @@ export function agentToApiPayload(agent: Agent, isNew: boolean): Record<string, 
     situationMatrimoniale: agent.situationMatrimoniale || null,
     formation: agent.formation || null,
     service: agent.service || null,
+    membreAral: agent.membreAral ?? false,
+    photo: agent.photo || null,
     chefId: agent.chefId ? Number(agent.chefId) : null,
+    ...(agent.sectionId ? { sectionId: Number(agent.sectionId) } : {}),
   };
   if (isNew) {
     return {

@@ -6,14 +6,27 @@ import { Alert, Button, Card, Empty, Field, PageHeader } from "@/components/ui";
 import { useStore } from "@/lib/store/api-store";
 import { hasPermission } from "@/lib/rbac";
 import { CONGE_LABELS, type TypeConge } from "@/lib/types";
-import { daysBetween, downloadText, formatDate, fullName, toCsv, todayIso, uid } from "@/lib/utils";
+import {
+  congeOverlap,
+  daysBetween,
+  downloadText,
+  formatDate,
+  fullName,
+  toCsv,
+  todayIso,
+  uid,
+} from "@/lib/utils";
 import { visibleAgents } from "@/lib/visibility";
 
 export default function CongesPage() {
-  const { state, currentCompte, currentAgent, saveConge } = useStore();
+  const { state, currentCompte, currentAgent, saveConge, saveDocument } = useStore();
   const canWrite = currentCompte ? hasPermission(currentCompte.role, "conges.write") : false;
   const canAll = currentCompte ? hasPermission(currentCompte.role, "conges.read.all") : false;
-  const team = visibleAgents(state.agents, currentCompte, currentAgent);
+  const team = visibleAgents(state.agents, currentCompte, currentAgent, {
+    affectations: state.affectations,
+    sections: state.sections,
+    divisions: state.divisions,
+  });
   const scope = canAll ? state.agents : team;
   const scopeIds = useMemo(() => new Set(scope.map((a) => a.id)), [scope]);
 
@@ -24,7 +37,7 @@ export default function CongesPage() {
   const [dateFin, setDateFin] = useState(todayIso());
   const [congeType, setCongeType] = useState<TypeConge>("annuel");
   const [reference, setReference] = useState("");
-  const [piece, setPiece] = useState("");
+  const [piece, setPiece] = useState<File | null>(null);
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
 
@@ -42,6 +55,43 @@ export default function CongesPage() {
     e.preventDefault();
     setError("");
     setMsg("");
+    if (!agentId) {
+      setError("Choisissez un agent.");
+      return;
+    }
+    if (dateFin < dateDebut) {
+      setError("La date de fin doit être postérieure ou égale à la date de début.");
+      return;
+    }
+    if (congeOverlap(state.conges, agentId, dateDebut, dateFin).length > 0) {
+      setError("Cette période chevauche un congé déjà enregistré pour cet agent.");
+      return;
+    }
+
+    let pieceJointe: string | undefined;
+    if (piece) {
+      const target = state.agents.find((a) => a.id === agentId);
+      const upload = await saveDocument(
+        {
+          id: uid("doc"),
+          agentId,
+          personneId: agentId,
+          type: "justificatif_conge",
+          titre: `Justificatif de congé — ${fullName(target)} du ${formatDate(dateDebut)} au ${formatDate(dateFin)}`,
+          reference,
+          archive: false,
+          createdAt: new Date().toISOString(),
+          versions: [],
+        },
+        piece,
+      );
+      if (!upload.ok) {
+        setError(upload.error);
+        return;
+      }
+      pieceJointe = upload.documentId ? `document:${upload.documentId}` : undefined;
+    }
+
     const res = await saveConge({
       id: uid("cg"),
       agentId,
@@ -50,7 +100,7 @@ export default function CongesPage() {
       dateFin,
       dureeJours: daysBetween(dateDebut, dateFin),
       referenceDecision: reference,
-      pieceJointe: piece || undefined,
+      pieceJointe,
       auteurId: currentCompte?.id ?? "cpt-systeme",
       createdAt: new Date().toISOString(),
     });
@@ -60,7 +110,7 @@ export default function CongesPage() {
     }
     setMsg("Congé enregistré.");
     setReference("");
-    setPiece("");
+    setPiece(null);
   }
 
   return (
@@ -193,8 +243,15 @@ export default function CongesPage() {
               <Field label="Référence de la décision">
                 <input value={reference} onChange={(e) => setReference(e.target.value)} required />
               </Field>
-              <Field label="Pièce jointe (optionnel)">
-                <input value={piece} onChange={(e) => setPiece(e.target.value)} />
+              <Field
+                label="Pièce jointe (optionnel)"
+                hint="Justificatif PDF ou image, ajouté au dossier de l'agent."
+              >
+                <input
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  onChange={(e) => setPiece(e.target.files?.[0] ?? null)}
+                />
               </Field>
             </div>
             <Button type="submit">Enregistrer</Button>

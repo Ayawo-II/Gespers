@@ -6,23 +6,28 @@ import { FormEvent, useState } from "react";
 import { Alert, Button, Card, Empty, Field, PageHeader } from "@/components/ui";
 import { useStore } from "@/lib/store/api-store";
 import { hasPermission } from "@/lib/rbac";
-import { DOCUMENT_LABELS, type DocumentDossier, type TypeDocument } from "@/lib/types";
-import { downloadText, formatDateTime, fullName, uid } from "@/lib/utils";
+import { DOCUMENT_LABELS, type TypeDocument } from "@/lib/types";
+import { formatDate, fullName, uid } from "@/lib/utils";
 import { canSeeAgent } from "@/lib/visibility";
 
 export default function DossierPage() {
   const { id } = useParams<{ id: string }>();
-  const { state, currentCompte, currentAgent, saveDocument, archiveDocument, replaceDocumentVersion } =
-    useStore();
+  const { state, currentCompte, currentAgent, saveDocument } = useStore();
   const agent = state.agents.find((a) => a.id === id);
   const [type, setType] = useState<TypeDocument>("piece_identite");
   const [titre, setTitre] = useState("");
   const [fichier, setFichier] = useState<File | null>(null);
-  const [motif, setMotif] = useState("");
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
 
-  if (!agent || !canSeeAgent(agent, currentCompte, currentAgent)) {
+  if (
+    !agent ||
+    !canSeeAgent(agent, currentCompte, currentAgent, {
+      affectations: state.affectations,
+      sections: state.sections,
+      divisions: state.divisions,
+    })
+  ) {
     return <Empty title="Dossier inaccessible" />;
   }
 
@@ -58,47 +63,7 @@ export default function DossierPage() {
     setMsg("Fichier ajouté au dossier numérique.");
   }
 
-  async function replace(doc: DocumentDossier) {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = ".pdf,.jpg,.jpeg,.png";
-    input.onchange = async () => {
-      const file = input.files?.[0];
-      if (!file) return;
-      const res = await replaceDocumentVersion(
-        doc.id,
-        {
-          id: uid("dv"),
-          version: doc.versions.length + 1,
-          nomFichier: file.name,
-          tailleKo: Math.max(1, Math.round(file.size / 1024)),
-          mime: file.type || "application/octet-stream",
-          uploadedAt: new Date().toISOString(),
-          auteurId: currentCompte?.id ?? "cpt-systeme",
-        },
-        file,
-      );
-      if (!res.ok) {
-        setError(res.error);
-        return;
-      }
-      setMsg("Nouvelle version enregistrée. Les versions précédentes sont conservées.");
-    };
-    input.click();
-  }
 
-  async function archive(doc: DocumentDossier) {
-    if (!motif.trim()) {
-      setMsg("Indiquez un motif d'archivage (aucune suppression définitive).");
-      return;
-    }
-    const res = await archiveDocument(doc.id, motif);
-    if (!res.ok) {
-      setError(res.error);
-      return;
-    }
-    setMsg("Document archivé. Il reste consultable dans l'historique.");
-  }
 
   return (
     <>
@@ -108,24 +73,20 @@ export default function DossierPage() {
       >
         <button
           className="btn btn-secondary"
-          onClick={() =>
-            downloadText(
-              `dossier-${agent.matricule}.txt`,
-              [
-                `Dossier ${fullName(agent)} (${agent.matricule})`,
-                ...docs.map(
-                  (d) =>
-                    `- ${DOCUMENT_LABELS[d.type]} : ${d.titre} (${d.versions.length} version(s))${d.archive ? " [archivé]" : ""}`,
-                ),
-              ].join("\n"),
-              "text/plain;charset=utf-8",
-            )
-          }
+          onClick={async () => {
+            try {
+              const { apiDownload, triggerBrowserDownload } = await import("@/services/api");
+              const blob = await apiDownload(`/api/v1/documents/export.zip?personneId=${agent.id}`);
+              triggerBrowserDownload(blob, `dossier-${agent.matricule}.zip`);
+            } catch (error) {
+              console.error(error);
+            }
+          }}
         >
-          Exporter le dossier
+          Exporter le dossier (ZIP)
         </button>
       </PageHeader>
-      {msg ? <Alert type={msg.includes("motif") ? "warn" : "ok"}>{msg}</Alert> : null}
+      {msg ? <Alert>{msg}</Alert> : null}
       {error ? <Alert type="error">{error}</Alert> : null}
       {canWrite ? (
         <Card>
@@ -168,9 +129,8 @@ export default function DossierPage() {
                 <tr>
                   <th>Titre</th>
                   <th>Type</th>
-                  <th>Versions</th>
-                  <th>État</th>
-                  <th></th>
+                  <th>Fichier</th>
+                  <th>Date d&apos;ajout</th>
                 </tr>
               </thead>
               <tbody>
@@ -179,36 +139,16 @@ export default function DossierPage() {
                     <td>{d.titre}</td>
                     <td>{DOCUMENT_LABELS[d.type]}</td>
                     <td>
-                      {d.versions.map((v) => (
-                        <div key={v.id} className="muted">
-                          v{v.version} · {v.nomFichier} · {formatDateTime(v.uploadedAt)}
-                        </div>
-                      ))}
+                      <span className="muted">{d.versions[0]?.nomFichier ?? "—"}</span>
                     </td>
-                    <td>{d.archive ? "Archivé" : "Actif"}</td>
-                    <td>
-                      {canWrite && !d.archive ? (
-                        <div className="actions">
-                          <button className="btn btn-secondary" onClick={() => replace(d)}>
-                            Remplacer
-                          </button>
-                          <button className="btn btn-danger" onClick={() => archive(d)}>
-                            Archiver
-                          </button>
-                        </div>
-                      ) : null}
-                    </td>
+                    <td>{formatDate(d.createdAt)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
-        {canWrite ? (
-          <Field label="Motif d'archivage (obligatoire, journalisé)">
-            <input value={motif} onChange={(e) => setMotif(e.target.value)} />
-          </Field>
-        ) : null}
+
       </Card>
       <p>
         <Link className="link" href={`/agents/${agent.id}`}>

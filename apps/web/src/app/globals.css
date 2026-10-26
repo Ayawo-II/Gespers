@@ -101,6 +101,24 @@ textarea {
   overflow: hidden;
   grid-template-columns: var(--sidebar) 1fr;
   transition: grid-template-columns 0.2s ease;
+  animation: app-shell-enter 280ms ease-out both;
+}
+
+@keyframes app-shell-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell {
+    animation: none;
+  }
 }
 
 .app-shell.collapsed {

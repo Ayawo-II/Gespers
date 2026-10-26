@@ -1,4 +1,4 @@
-import type { Agent, Conge, GrilleAvancement } from "@/lib/types";
+import type { Agent, Conge } from "@/lib/types";
 
 export function uid(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
@@ -65,26 +65,6 @@ export function lastAvancementDate(agent: Agent, avancements: { agentId: string;
     .map((a) => a.dateEffet)
     .sort();
   return dates.at(-1) ?? agent.dateEntree;
-}
-
-export function nextEchelonDate(agent: Agent, grille: GrilleAvancement, avancements: { agentId: string; dateEffet: string }[]) {
-  return addMonths(lastAvancementDate(agent, avancements), grille.dureeEchelonMois);
-}
-
-export function isEligibleEchelon(agent: Agent, grille: GrilleAvancement, avancements: { agentId: string; dateEffet: string }[]) {
-  if (agent.etatCarriere === "SORTI" || agent.situation === "SORTI" || agent.situation === "fin_parcours") return false;
-  const lastEch = grille.echelons[grille.echelons.length - 1];
-  if (String(agent.echelon) === String(lastEch)) return false;
-  return nextEchelonDate(agent, grille, avancements) <= todayIso();
-}
-
-export function isEligibleClasse(agent: Agent, grille: GrilleAvancement, avancements: { agentId: string; dateEffet: string }[]) {
-  if (agent.etatCarriere === "SORTI" || agent.situation === "SORTI" || agent.situation === "fin_parcours") return false;
-  const lastEch = grille.echelons[grille.echelons.length - 1];
-  const lastCl = grille.classes[grille.classes.length - 1];
-  if (String(agent.echelon) !== String(lastEch)) return false;
-  if (agent.classe === lastCl) return false;
-  return addMonths(lastAvancementDate(agent, avancements), grille.dureeClasseMois) <= todayIso();
 }
 
 export function nextValue<T = string>(list: T[], current: T): T {

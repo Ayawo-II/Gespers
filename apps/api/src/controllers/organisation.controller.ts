@@ -7,11 +7,14 @@ const organisationIdSchema = z.coerce.number().int().positive();
 
 const divisionCreateSchema = z.object({
   libelle: z.string().trim().min(1).max(150),
-  chefId: z.number().int().positive().nullable().optional(),
+  chefId: z.number().int().positive(),
 });
 
-const divisionUpdateSchema = divisionCreateSchema
-  .partial()
+const divisionUpdateSchema = z
+  .object({
+    libelle: z.string().trim().min(1).max(150).optional(),
+    chefId: z.number().int().positive().nullable().optional(),
+  })
   .refine((data) => Object.keys(data).length > 0, {
     message: "Au moins un champ doit être fourni.",
   });
@@ -19,11 +22,15 @@ const divisionUpdateSchema = divisionCreateSchema
 const sectionCreateSchema = z.object({
   libelle: z.string().trim().min(1).max(150),
   divisionId: z.number().int().positive(),
-  chefId: z.number().int().positive().nullable().optional(),
+  chefId: z.number().int().positive(),
 });
 
-const sectionUpdateSchema = sectionCreateSchema
-  .partial()
+const sectionUpdateSchema = z
+  .object({
+    libelle: z.string().trim().min(1).max(150).optional(),
+    divisionId: z.number().int().positive().optional(),
+    chefId: z.number().int().positive().nullable().optional(),
+  })
   .refine((data) => Object.keys(data).length > 0, {
     message: "Au moins un champ doit être fourni.",
   });

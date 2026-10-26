@@ -4,15 +4,17 @@ import Link from "next/link";
 import { Card, PageHeader } from "@/components/ui";
 import { PieChart } from "@/components/charts";
 import { SituationBadge, StatutBadge } from "@/components/status";
+import { useEffect, useState } from "react";
 import { useStore } from "@/lib/store/api-store";
 import { CLASSE_LABELS, ROLE_LABELS } from "@/lib/types";
-import { formatDate, fullName, isEligibleClasse, isEligibleEchelon, nextEchelonDate } from "@/lib/utils";
+import { apiFetch } from "@/services/api";
+import { addMonths, formatDate, fullName, lastAvancementDate } from "@/lib/utils";
 import { agentsDeMaDivision, agentsDeMaSection } from "@/lib/visibility";
 
 const STATUT_COLORS: Record<string, string> = {
   FONCTIONNAIRE: "#008751", // Vert Togo
   CONTRACTUEL: "#FFCE00",   // Jaune Togo
-  PIVOTE: "#E30613",        // Rouge Togo
+  PIGISTE: "#E30613",       // Rouge Togo
 };
 
 const SITUATION_COLORS: Record<string, string> = {
@@ -23,6 +25,21 @@ const SITUATION_COLORS: Record<string, string> = {
 
 export default function DashboardPage() {
   const { state, currentCompte, currentAgent } = useStore();
+  const [summary, setSummary] = useState<Record<string, number> | null>(null);
+  useEffect(() => {
+    let ignore = false;
+    (async () => {
+      try {
+        const res = await apiFetch<{ data: Record<string, number> }>("/api/v1/dashboard/summary");
+        if (!ignore) setSummary(res.data);
+      } catch {
+        if (!ignore) setSummary(null);
+      }
+    })();
+    return () => {
+      ignore = true;
+    };
+  }, []);
   if (!currentCompte || !currentAgent) return null;
 
   const role = currentCompte.role;
@@ -33,22 +50,25 @@ export default function DashboardPage() {
   const estActif = (a: (typeof state.agents)[number]) =>
     a.etatCarriere !== "SORTI" && a.situation !== "SORTI" && a.situation !== "fin_parcours";
   const estFonctionnaire = (a: (typeof state.agents)[number]) =>
-    a.typeAgent === "FONCTIONNAIRE" || a.statut === "fonctionnaire";
+    a.typeAgent === "FONCTIONNAIRE" || a.statut === "FONCTIONNAIRE";
   const estTitulaire = (a: (typeof state.agents)[number]) =>
     a.etatCarriere === "TITULAIRE" || a.situation === "titulaire";
 
   const aujourdHui = new Date().toISOString().slice(0, 10);
-  const dans90Jours = new Date();
-  dans90Jours.setDate(dans90Jours.getDate() + 90);
-  const horizon = dans90Jours.toISOString().slice(0, 10);
+  const horizon = addMonths(aujourdHui, 3);
 
   // --- Périmètre visible selon le rôle ---
+  const perimetreContext = {
+    affectations: state.affectations,
+    sections: state.sections,
+    divisions: state.divisions,
+  };
   const perimetre = isAgent
     ? [currentAgent]
     : isChefSection
-      ? agentsDeMaSection(state.agents, currentAgent)
+      ? agentsDeMaSection(state.agents, currentAgent, perimetreContext)
       : isChefDivision
-        ? agentsDeMaDivision(state.agents, currentAgent)
+        ? agentsDeMaDivision(state.agents, currentAgent, perimetreContext)
         : state.agents;
 
   const perimetreLabel = isAgent
@@ -60,8 +80,9 @@ export default function DashboardPage() {
         : "au niveau national";
 
   // --- Indicateurs calculés sur le périmètre ---
-  const effectif = perimetre.length;
-  const effectifActif = perimetre.filter(estActif).length;
+  const isNational = !(isAgent || isChefSection || isChefDivision);
+  const effectif = isNational && summary?.totalAgents ? summary.totalAgents : perimetre.length;
+  const effectifActif = isNational && summary?.agentsActifs ? summary.agentsActifs : perimetre.filter(estActif).length;
   const titulaires = perimetre.filter(
     (a) => a.etatCarriere === "TITULAIRE" || a.situation === "titulaire",
   ).length;
@@ -75,31 +96,26 @@ export default function DashboardPage() {
     .filter((a) => estActif(a) && estFonctionnaire(a) && estTitulaire(a))
     .map((a) => ({
       agent: a,
-      prochaine: nextEchelonDate(a, state.grille, state.avancements),
-      eligible: isEligibleEchelon(a, state.grille, state.avancements) || isEligibleClasse(a, state.grille, state.avancements),
+      prochaine: addMonths(lastAvancementDate(a, state.avancements), 24),
     }))
-    .filter((x) => x.eligible || x.prochaine <= horizon)
+    .filter((x) => x.prochaine <= horizon)
     .sort((x, y) => x.prochaine.localeCompare(y.prochaine));
-
-  const horsAvancementAuto = perimetre.filter(
-    (a) => estActif(a) && !(estFonctionnaire(a) && estTitulaire(a)),
-  );
 
   const statutSlices = [
     {
       label: "Fonctionnaire",
-      value: perimetre.filter((a) => a.typeAgent === "FONCTIONNAIRE" || a.statut === "fonctionnaire").length,
+      value: perimetre.filter((a) => a.typeAgent === "FONCTIONNAIRE" || a.statut === "FONCTIONNAIRE").length,
       color: STATUT_COLORS.FONCTIONNAIRE,
     },
     {
       label: "Contractuel",
-      value: perimetre.filter((a) => a.typeAgent === "CONTRACTUEL" || a.statut === "contractuel").length,
+      value: perimetre.filter((a) => a.typeAgent === "CONTRACTUEL" || a.statut === "CONTRACTUEL").length,
       color: STATUT_COLORS.CONTRACTUEL,
     },
     {
       label: "Pigiste (Pivoté)",
-      value: perimetre.filter((a) => a.typeAgent === "PIVOTE" || a.statut === "pigiste").length,
-      color: STATUT_COLORS.PIVOTE,
+      value: perimetre.filter((a) => a.typeAgent === "PIGISTE" || a.statut === "PIGISTE").length,
+      color: STATUT_COLORS.PIGISTE,
     },
   ];
 
@@ -160,11 +176,11 @@ export default function DashboardPage() {
         </Card>
 
         <Card className="kpi">
-          <span>{isAgent ? "Prochain échelon (estimé)" : "Taux de titularisation"}</span>
+          <span>{isAgent ? "Dernier avancement" : "Taux de titularisation"}</span>
           {isAgent ? (
             <>
-              <strong>{formatDate(nextEchelonDate(currentAgent, state.grille, state.avancements))}</strong>
-              <em>Règle : {state.grille.dureeEchelonMois} mois</em>
+              <strong>{formatDate(lastAvancementDate(currentAgent, state.avancements))}</strong>
+              <em>Enregistrement manuel</em>
             </>
           ) : (
             <>
@@ -175,11 +191,11 @@ export default function DashboardPage() {
         </Card>
 
         <Card className="kpi">
-          <span>{isAgent ? "Prochain avancement" : "Agents actifs"}</span>
+          <span>{isAgent ? "Échéance indicative (2 ans)" : "Agents actifs"}</span>
           {isAgent ? (
             <>
-              <strong>{formatDate(nextEchelonDate(currentAgent, state.grille, state.avancements))}</strong>
-              <em>Règle : {state.grille.dureeEchelonMois} mois</em>
+              <strong>{formatDate(addMonths(lastAvancementDate(currentAgent, state.avancements), 24))}</strong>
+              <em>Avancement manuel</em>
             </>
           ) : (
             <>
@@ -196,7 +212,7 @@ export default function DashboardPage() {
               ? state.documents.filter((d) => d.agentId === currentAgent.id && !d.archive).length
               : avancementsProches.length}
           </strong>
-          <em>{isAgent ? "Pièces actives" : "Échéances ≤ 90 jours ou en retard"}</em>
+          <em>{isAgent ? "Pièces actives" : "Échéance 2 ans dans 3 mois ou dépassée"}</em>
         </Card>
       </div>
 
@@ -236,18 +252,18 @@ export default function DashboardPage() {
 
       <Card>
         <h3 style={{ marginBottom: 16, color: "var(--navy)" }}>
-          Alertes avancement · échéances proches ({avancementsProches.length})
+          Alertes avancement manuel · 3 mois restants avant l&apos;échéance de 2 ans ({avancementsProches.length})
         </h3>
 
         {avancementsProches.length === 0 ? (
           <p className="muted">
             {isAgent
-              ? "Aucune échéance d'avancement dans les 90 prochains jours."
-              : "Aucun avancement ne parvient à terme dans les 90 prochains jours."}
+              ? "Aucune échéance de 2 ans dans les 3 prochains mois."
+              : "Aucun agent n'arrive à 3 mois de l'échéance de 2 ans sans avancement."}
           </p>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
-            {avancementsProches.slice(0, 8).map(({ agent: a, prochaine, eligible }) => {
+            {avancementsProches.slice(0, 8).map(({ agent: a, prochaine }) => {
               const jours = Math.round(
                 (new Date(prochaine).getTime() - new Date(aujourdHui).getTime()) / 86400000,
               );
@@ -278,11 +294,9 @@ export default function DashboardPage() {
                     className={enRetard ? "badge badge-red" : "badge badge-green"}
                     style={{ fontSize: 11, whiteSpace: "nowrap" }}
                   >
-                    {eligible
-                      ? "Éligible maintenant"
-                      : enRetard
-                        ? `En retard (${Math.abs(jours)} j)`
-                        : `Dans ${jours} j`}
+                    {enRetard
+                      ? `Échéance dépassée (${Math.abs(jours)} j)`
+                      : `Dans ${jours} j`}
                   </span>
                 </div>
               );
@@ -291,50 +305,6 @@ export default function DashboardPage() {
         )}
       </Card>
 
-      {!isAgent ? (
-        <Card>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <h3 style={{ color: "var(--navy)", margin: 0 }}>
-              Hors avancement automatique ({horsAvancementAuto.length})
-            </h3>
-          </div>
-
-          {horsAvancementAuto.length === 0 ? (
-            <p className="muted">Tous les agents actifs relèvent de l&apos;avancement automatique.</p>
-          ) : (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Agent</th>
-                    <th>Fonction</th>
-                    <th>Statut</th>
-                    <th>Situation</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {horsAvancementAuto.slice(0, 10).map((a) => (
-                    <tr key={a.id}>
-                      <td>
-                        <Link className="link" href={`/agents/${a.id}`}>
-                          {fullName(a)}
-                        </Link>
-                      </td>
-                      <td>{a.fonction || a.poste}</td>
-                      <td>
-                        <StatutBadge value={a.typeAgent || a.statut} />
-                      </td>
-                      <td>
-                        <SituationBadge value={a.etatCarriere || a.situation} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Card>
-      ) : null}
     </>
   );
 }

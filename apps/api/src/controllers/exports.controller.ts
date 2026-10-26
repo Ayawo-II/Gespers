@@ -6,6 +6,7 @@ import { z } from "zod";
 import { prisma } from "../config/prisma.js";
 import { getAuthenticatedUser } from "../middlewares/authenticate.js";
 import { AppError } from "../middlewares/errorHandler.js";
+import { documentReadWhere } from "../services/agent-access.js";
 import { resolveStoredFile } from "../services/document-storage.js";
 
 const MAX_EXPORT_ROWS = 50_000;
@@ -137,6 +138,8 @@ function safeArchiveName(originalName: string | null, id: number): string {
 
 export async function exportDocumentsZip(req: Request, res: Response) {
   const query = documentExportQuerySchema.parse(req.query);
+  const user = getAuthenticatedUser(res);
+  const scope = documentReadWhere(user);
   const ids = query.ids
     ? [...new Set(query.ids.split(",").map((value) => z.coerce.number().int().positive().parse(value)))]
     : undefined;
@@ -147,7 +150,7 @@ export async function exportDocumentsZip(req: Request, res: Response) {
     throw new AppError("Utilisez soit une liste d’IDs, soit des filtres.", 400, "MIXED_DOCUMENT_SELECTION");
   }
 
-  const where = ids
+  const filters = ids
     ? { id: { in: ids } }
     : {
         ...(query.personneId !== undefined
@@ -158,6 +161,7 @@ export async function exportDocumentsZip(req: Request, res: Response) {
           ? { dansRegistreGeneral: query.dansRegistreGeneral === "true" }
           : {}),
       };
+  const where = { AND: [scope, filters] };
   const documents = await prisma.documents.findMany({
     where,
     orderBy: [{ dateAjout: "desc" }, { id: "desc" }],
@@ -203,7 +207,6 @@ export async function exportDocumentsZip(req: Request, res: Response) {
     }),
   );
 
-  const user = getAuthenticatedUser(res);
   await prisma.journalAudit.create({
     data: {
       auteurId: user.id,

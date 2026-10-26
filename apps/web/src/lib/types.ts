@@ -29,14 +29,7 @@ export type Classe =
   | "3"
   | "4";
 
-export type TypeAgent =
-  | "FONCTIONNAIRE"
-  | "CONTRACTUEL"
-  | "PIVOTE"
-  // Aliases minuscules
-  | "fonctionnaire"
-  | "contractuel"
-  | "pigiste";
+export type TypeAgent = "FONCTIONNAIRE" | "CONTRACTUEL" | "PIGISTE";
 
 export type EtatCarriere =
   | "STAGIAIRE"
@@ -107,6 +100,7 @@ export type TypeCourrier =
   | "entrant"
   | "sortant"
   | "circulaire"
+  | "courrier_simple"
   | "arrete_ministeriel";
 
 // --- Interfaces d'entités correspondant aux modèles Prisma ---
@@ -154,10 +148,13 @@ export interface Personnes {
   dateDepart?: string | null;
   motifDepart?: MotifDepart | null;
   estArchive?: boolean;
+  membreAral?: boolean;
+  photo?: string;
 
   // Champs d'aide et d'association pour l'IHM
   email?: string;
   chefId?: string;
+  sectionId?: string;
   service?: string;
   poste?: string; // alias de fonction
   statut?: StatutAgent; // alias de typeAgent
@@ -169,7 +166,6 @@ export interface Personnes {
   dateTitularisation?: string;
   examenTitularisation?: ExamenTitularisation;
   finParcours?: FinParcours;
-  photo?: string;
 }
 
 export type Agent = Personnes;
@@ -192,11 +188,11 @@ export interface Affectation {
   agentId: string;
   personneId?: string;
   sectionId?: string;
-  service: string;
-  poste: string;
-  dateDebut: string;
+  service?: string;
+  poste?: string;
+  dateDebut?: string;
   dateFin?: string;
-  auteurId: string;
+  auteurId?: string;
 }
 
 /** Modèle Mods (Prisma) - Avancements et modifications de carrière */
@@ -371,6 +367,7 @@ export const ROLE_LABELS: Record<string, string> = {
 export const TYPE_AGENT_LABELS: Record<string, string> = {
   FONCTIONNAIRE: "Fonctionnaire",
   CONTRACTUEL: "Contractuel",
+  PIGISTE: "Pigiste (Pivoté)",
   PIVOTE: "Pigiste (Pivoté)",
   fonctionnaire: "Fonctionnaire",
   contractuel: "Contractuel",
@@ -467,7 +464,8 @@ export const COURRIER_LABELS: Record<TypeCourrier, string> = {
   entrant: "Courrier entrant",
   sortant: "Courrier sortant",
   circulaire: "Circulaire",
-  arrete_ministeriel: "Arrêté ministériel",
+  courrier_simple: "Courrier simple",
+  arrete_ministeriel: "Courrier simple",
 };
 
 export const SERVICES = [

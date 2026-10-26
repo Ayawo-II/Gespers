@@ -7,13 +7,13 @@ import { useStore } from "@/lib/store/api-store";
 import {
   CATEGORIE_LABELS,
   CLASSE_LABELS,
-  SERVICES,
   type Agent,
   type Categorie,
   type Classe,
   type EtatCarriere,
   type TypeAgent,
 } from "@/lib/types";
+import { readPhotoFile } from "@/lib/photo";
 import { uid } from "@/lib/utils";
 
 const empty = (id: string): Agent => ({
@@ -48,7 +48,9 @@ const empty = (id: string): Agent => ({
   service: "Division de l'information",
   dateEntree: new Date().toISOString().slice(0, 10),
   estArchive: false,
-});
+  membreAral: false,
+  sectionId: "",
+} as Agent);
 
 export function AgentForm({ initial, isNew }: { initial?: Agent; isNew: boolean }) {
   const { state, saveAgent } = useStore();
@@ -71,6 +73,11 @@ export function AgentForm({ initial, isNew }: { initial?: Agent; isNew: boolean 
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    setError("");
+    if (!agent.sectionId) {
+      setError("La section d'affectation est obligatoire.");
+      return;
+    }
     if (agent.email && !agent.email.includes("@")) {
       setError("Adresse e-mail invalide.");
       return;
@@ -99,16 +106,38 @@ export function AgentForm({ initial, isNew }: { initial?: Agent; isNew: boolean 
 
       <h3 style={{ color: "var(--navy)", marginBottom: 12 }}>Identité & État civil</h3>
       <div className="form-row-3">
+        <Field label="Photo de profil">
+          <input
+            type="file"
+            accept="image/*"
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              try {
+                set("photo", await readPhotoFile(file));
+              } catch {
+                set("photo", undefined);
+              }
+            }}
+          />
+        </Field>
         <Field label="Matricule">
           <input value={agent.matricule} onChange={(e) => set("matricule", e.target.value)} required />
         </Field>
         <Field label="Nom">
           <input value={agent.nom} onChange={(e) => set("nom", e.target.value)} required />
         </Field>
+      </div>
+      <div className="form-row-3">
         <Field label="Prénoms">
           <input value={agent.prenoms} onChange={(e) => set("prenoms", e.target.value)} required />
         </Field>
       </div>
+      {agent.photo ? (
+        <div style={{ marginBottom: 12 }}>
+          <img src={agent.photo} alt="Aperçu photo" style={{ width: 80, height: 80, borderRadius: "50%", objectFit: "cover" }} />
+        </div>
+      ) : null}
 
       <div className="form-row-3">
         <Field label="Sexe">
@@ -188,18 +217,24 @@ export function AgentForm({ initial, isNew }: { initial?: Agent; isNew: boolean 
         <Field label="Type d'agent (typeAgent)">
           <select
             value={agent.typeAgent}
-            onChange={(e) => set("typeAgent", e.target.value as TypeAgent)}
+            onChange={(e) => {
+              const v = e.target.value as TypeAgent;
+              set("typeAgent", v);
+              if (v !== "FONCTIONNAIRE") {
+                set("etatCarriere", "TITULAIRE");
+              }
+            }}
           >
             <option value="FONCTIONNAIRE">Fonctionnaire</option>
             <option value="CONTRACTUEL">Contractuel</option>
-            <option value="PIVOTE">Pigiste (Pivoté)</option>
+            <option value="PIGISTE">Pigiste (Pivoté)</option>
           </select>
         </Field>
         <Field label="État de carrière (etatCarriere)">
           <select
             value={agent.etatCarriere}
             onChange={(e) => set("etatCarriere", e.target.value as EtatCarriere)}
-            disabled={isNew}
+            disabled={!isNew || agent.typeAgent !== "FONCTIONNAIRE"}
           >
             <option value="STAGIAIRE">Stagiaire</option>
             <option value="TITULAIRE">Titulaire</option>
@@ -207,14 +242,35 @@ export function AgentForm({ initial, isNew }: { initial?: Agent; isNew: boolean 
           </select>
         </Field>
         <Field label="Date d'entrée en service">
-          <input type="date" value={agent.dateEntree} onChange={(e) => set("dateEntree", e.target.value)} required />
+          <input
+            type="date"
+            value={agent.dateEntree}
+            onChange={(e) => set("dateEntree", e.target.value)}
+            disabled={!isNew}
+            required
+          />
         </Field>
+      </div>
+
+      <div className="form-row" style={{ marginTop: 12 }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            type="checkbox"
+            checked={agent.membreAral === true}
+            onChange={(e) => set("membreAral", e.target.checked)}
+          />
+          Membre de l&apos;amicale de la radio ARAL
+        </label>
       </div>
 
       <p className="muted" style={{ fontSize: 12, marginBottom: 6, fontWeight: 600 }}>Grade (catégorie, classe, échelon, indice)</p>
       <div className="form-row-4">
         <Field label="Catégorie">
-          <select value={agent.categorie} onChange={(e) => set("categorie", e.target.value as Categorie)}>
+          <select
+            value={agent.categorie}
+            onChange={(e) => set("categorie", e.target.value as Categorie)}
+            disabled={!isNew}
+          >
             {state.grille.categories.map((c) => (
               <option key={c} value={c}>
                 {CATEGORIE_LABELS[c] ?? c}
@@ -223,7 +279,11 @@ export function AgentForm({ initial, isNew }: { initial?: Agent; isNew: boolean 
           </select>
         </Field>
         <Field label="Classe">
-          <select value={agent.classe} onChange={(e) => set("classe", e.target.value as Classe)}>
+          <select
+            value={agent.classe}
+            onChange={(e) => set("classe", e.target.value as Classe)}
+            disabled={!isNew}
+          >
             {state.grille.classes.map((c) => (
               <option key={c} value={c}>
                 {CLASSE_LABELS[c] ?? c}
@@ -232,7 +292,11 @@ export function AgentForm({ initial, isNew }: { initial?: Agent; isNew: boolean 
           </select>
         </Field>
         <Field label="Échelon">
-          <select value={String(agent.echelon)} onChange={(e) => set("echelon", Number(e.target.value))}>
+          <select
+            value={String(agent.echelon)}
+            onChange={(e) => set("echelon", Number(e.target.value))}
+            disabled={!isNew}
+          >
             {state.grille.echelons.map((c) => (
               <option key={c} value={c}>
                 Échelon {c}
@@ -246,6 +310,7 @@ export function AgentForm({ initial, isNew }: { initial?: Agent; isNew: boolean 
             min={0}
             value={agent.indice ?? 500}
             onChange={(e) => set("indice", Number(e.target.value))}
+            disabled={!isNew}
           />
         </Field>
       </div>
@@ -253,10 +318,41 @@ export function AgentForm({ initial, isNew }: { initial?: Agent; isNew: boolean 
       <p className="muted" style={{ fontSize: 12, marginBottom: 6, fontWeight: 600 }}>Affectation</p>
       <div className="form-row-3">
         <Field label="Service / Division">
-          <select value={agent.service} onChange={(e) => set("service", e.target.value)}>
-            {SERVICES.map((s) => (
-              <option key={s}>{s}</option>
+          <select
+            value={agent.service}
+            onChange={(e) => {
+              set("service", e.target.value);
+              set("sectionId", "");
+            }}
+          >
+            {state.divisions.map((d) => (
+              <option key={d.id} value={d.libelle}>
+                {d.libelle}
+              </option>
             ))}
+            {agent.service && !state.divisions.some((d) => d.libelle === agent.service) ? (
+              <option value={agent.service}>{agent.service}</option>
+            ) : null}
+          </select>
+        </Field>
+        <Field label="Section d'affectation *">
+          <select
+            value={agent.sectionId ?? ""}
+            onChange={(e) => set("sectionId", e.target.value)}
+            required
+          >
+            <option value="">Sélectionner une section</option>
+            {(() => {
+              const currentDivision = state.divisions.find((d) => d.libelle === agent.service);
+              if (!currentDivision) return null;
+              return state.sections
+                .filter((s) => s.divisionId === currentDivision.id)
+                .map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.libelle}
+                  </option>
+                ));
+            })()}
           </select>
         </Field>
         <Field label="Fonction / Intitulé du poste">
@@ -269,22 +365,18 @@ export function AgentForm({ initial, isNew }: { initial?: Agent; isNew: boolean 
             required
           />
         </Field>
-        <Field label="Chef hiérarchique">
-          <select
-            value={agent.chefId ?? ""}
-            onChange={(e) => set("chefId", e.target.value || undefined)}
-          >
-            <option value="">Aucun</option>
-            {state.agents
-              .filter((a) => a.id !== agent.id)
-              .map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.prenoms} {a.nom} — {a.fonction || a.poste}
-                </option>
-              ))}
-          </select>
-        </Field>
       </div>
+      {(() => {
+        if (!agent.sectionId) return null;
+        const section = state.sections.find((s) => String(s.id) === String(agent.sectionId));
+        if (!section) return null;
+        const chef = section.chefId ? state.agents.find((a) => a.id === section.chefId) : undefined;
+        return (
+          <p className="muted" style={{ fontSize: 12 }}>
+            Chef de section : {chef ? `${chef.prenoms} ${chef.nom}` : "Non renseigné"} — deviendra le supérieur direct de l&apos;agent.
+          </p>
+        );
+      })()}
 
       <div className="actions" style={{ marginTop: 20 }}>
         <Button type="submit">{isNew ? "Enregistrer l'agent" : "Enregistrer les modifications"}</Button>

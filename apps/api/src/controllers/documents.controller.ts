@@ -1,8 +1,10 @@
+import type { Prisma } from "@prisma/client";
 import type { Request, Response } from "express";
 import { z } from "zod";
 import { prisma } from "../config/prisma.js";
 import { getAuthenticatedUser } from "../middlewares/authenticate.js";
 import { AppError } from "../middlewares/errorHandler.js";
+import { documentReadWhere } from "../services/agent-access.js";
 import {
   mimeTypeForStorageKey,
   removeStoredFile,
@@ -71,15 +73,18 @@ export async function listDocumentTypes(_req: Request, res: Response) {
 export async function listDocuments(req: Request, res: Response) {
   const { page, limit, personneId, typeDocId, dansRegistreGeneral } =
     listQuerySchema.parse(req.query);
-  const where = {
-    ...(personneId === undefined
-      ? {}
-      : { personnes: { some: { personneId } } }),
-    ...(typeDocId === undefined ? {} : { typeDocId }),
-    ...(dansRegistreGeneral === undefined
-      ? {}
-      : { dansRegistreGeneral: dansRegistreGeneral === "true" }),
-  };
+  const user = getAuthenticatedUser(res);
+  const filters: Prisma.DocumentsWhereInput[] = [documentReadWhere(user)];
+  if (personneId !== undefined) {
+    filters.push({ personnes: { some: { personneId } } });
+  }
+  if (typeDocId !== undefined) {
+    filters.push({ typeDocId });
+  }
+  if (dansRegistreGeneral !== undefined) {
+    filters.push({ dansRegistreGeneral: dansRegistreGeneral === "true" });
+  }
+  const where: Prisma.DocumentsWhereInput = { AND: filters };
   const [documents, total] = await prisma.$transaction([
     prisma.documents.findMany({
       where,
@@ -108,8 +113,9 @@ export async function listDocuments(req: Request, res: Response) {
 
 export async function getDocument(req: Request, res: Response) {
   const id = parseId(req.params.id);
-  const document = await prisma.documents.findUnique({
-    where: { id },
+  const user = getAuthenticatedUser(res);
+  const document = await prisma.documents.findFirst({
+    where: { id, ...documentReadWhere(user) },
     include: {
       typeDoc: true,
       personnes: {
@@ -229,8 +235,9 @@ export async function uploadDocument(req: Request, res: Response) {
 
 export async function downloadDocument(req: Request, res: Response) {
   const id = parseId(req.params.id);
-  const document = await prisma.documents.findUnique({
-    where: { id },
+  const user = getAuthenticatedUser(res);
+  const document = await prisma.documents.findFirst({
+    where: { id, ...documentReadWhere(user) },
     select: { lien: true, nomFichier: true, mimeType: true },
   });
   if (!document) {

@@ -30,6 +30,7 @@ import {
   agentToApiPayload,
   congeTypeToApi,
   courrierTypeToApi,
+  mapAffectations,
   mapAgent,
   mapAudit,
   mapAvancement,
@@ -57,6 +58,10 @@ type ApiMeResponse = { data: SessionUser };
 
 type Result = { ok: true } | { ok: false; error: string };
 
+type SaveDocumentResult =
+  | { ok: true; documentId?: string }
+  | { ok: false; error: string };
+
 type TypeDocOption = { id: number; libelle: string };
 
 type StoreContextValue = {
@@ -71,6 +76,8 @@ type StoreContextValue = {
   resetData: () => void;
   audit: (entry: Omit<EntreeAudit, "id" | "date">) => void;
   saveAgent: (agent: Agent, isNew: boolean) => Promise<Result>;
+  updateAgentPhoto: (agentId: string, photo: string | null) => Promise<Result>;
+  updateMyPhoto: (photo: string | null) => Promise<Result>;
   saveDivision: (division: Division, isNew: boolean) => Promise<Result>;
   saveSection: (section: Section, isNew: boolean) => Promise<Result>;
   titulariser: (agentId: string, data: NonNullable<Agent["examenTitularisation"]>) => Promise<Result>;
@@ -79,13 +86,7 @@ type StoreContextValue = {
     payload: Partial<Omit<Avancement, "id" | "createdAt" | "auteurId">> & Pick<Avancement, "agentId" | "dateEffet" | "nature">,
   ) => Promise<Result>;
   updateGrille: (grille: AppState["grille"]) => Promise<Result>;
-  saveDocument: (doc: DocumentDossier, file?: File) => Promise<Result>;
-  archiveDocument: (docId: string, motif: string) => Promise<Result>;
-  replaceDocumentVersion: (
-    docId: string,
-    version: DocumentDossier["versions"][number],
-    file?: File,
-  ) => Promise<Result>;
+  saveDocument: (doc: DocumentDossier, file?: File) => Promise<SaveDocumentResult>;
   saveCourrier: (courrier: Courrier, isNew: boolean) => Promise<Result>;
   saveConge: (conge: Conge) => Promise<Result>;
   saveCompte: (compte: Compte, isNew: boolean) => Promise<{ ok: true; temporaryPassword?: string } | { ok: false; error: string }>;
@@ -204,9 +205,13 @@ export function ApiStoreProvider({ children }: { children: React.ReactNode }) {
         };
       });
     }
-    const agents: Agent[] =
-      agentsRes.status === "fulfilled" ? agentsRes.value.data.map(mapAgent) : [];
+    const rawAgents: ApiRecord[] =
+      agentsRes.status === "fulfilled" ? agentsRes.value.data : [];
+    const agents: Agent[] = rawAgents.map(mapAgent);
     next.agents = agents;
+    next.affectations = rawAgents.flatMap((agent) =>
+      mapAffectations(agent, next.sections, next.divisions),
+    );
     if (grilleRes.status === "fulfilled") {
       const g = grilleRes.value.data;
       if (g) {
@@ -328,6 +333,32 @@ export function ApiStoreProvider({ children }: { children: React.ReactNode }) {
           body: JSON.stringify(agentToApiPayload(agent, false)),
         });
       }
+      await reload();
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: errorMessage(error) };
+    }
+  };
+
+  const updateAgentPhoto: StoreContextValue["updateAgentPhoto"] = async (agentId, photo) => {
+    try {
+      await apiFetch(`/api/v1/agents/${agentId}/photo`, {
+        method: "PATCH",
+        body: JSON.stringify({ photo }),
+      });
+      await reload();
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: errorMessage(error) };
+    }
+  };
+
+  const updateMyPhoto: StoreContextValue["updateMyPhoto"] = async (photo) => {
+    try {
+      await apiFetch("/api/v1/agents/me/photo", {
+        method: "PATCH",
+        body: JSON.stringify({ photo }),
+      });
       await reload();
       return { ok: true };
     } catch (error) {
@@ -477,36 +508,9 @@ export function ApiStoreProvider({ children }: { children: React.ReactNode }) {
       if (doc.expediteur) form.set("expediteur", doc.expediteur);
       if (doc.dateDocument) form.set("dateDocument", doc.dateDocument);
       form.set("personneIds", JSON.stringify(doc.agentId ? [Number(doc.agentId)] : []));
-      await apiUpload("/api/v1/documents", form);
+      const created = await apiUpload<{ data: { id: number } }>("/api/v1/documents", form);
       await reload();
-      return { ok: true };
-    } catch (error) {
-      return { ok: false, error: errorMessage(error) };
-    }
-  };
-
-  const archiveDocument: StoreContextValue["archiveDocument"] = async () => {
-    return { ok: false, error: "L'archivage de document n'est pas disponible via l'API." };
-  };
-
-  const replaceDocumentVersion: StoreContextValue["replaceDocumentVersion"] = async (docId, version, file) => {
-    if (!file) {
-      return { ok: false, error: "Un fichier est obligatoire pour remplacer la version." };
-    }
-    try {
-      const existing = state.documents.find((d) => d.id === docId);
-      const form = new FormData();
-      form.set("file", file);
-      form.set("titre", existing?.titre ?? version.nomFichier);
-      const typeDocId = existing ? typeDocIdForType(existing.type, typeDocs) : undefined;
-      if (!typeDocId) {
-        return { ok: false, error: "Type de document introuvable côté serveur." };
-      }
-      form.set("typeDocId", String(typeDocId));
-      form.set("personneIds", JSON.stringify(existing?.agentId ? [Number(existing.agentId)] : []));
-      await apiUpload("/api/v1/documents", form);
-      await reload();
-      return { ok: true };
+      return { ok: true, documentId: created.data?.id ? String(created.data.id) : undefined };
     } catch (error) {
       return { ok: false, error: errorMessage(error) };
     }
@@ -528,7 +532,7 @@ export function ApiStoreProvider({ children }: { children: React.ReactNode }) {
       if (isNew) {
         await apiFetch("/api/v1/courriers", { method: "POST", body: JSON.stringify(body) });
       } else {
-        await apiFetch(`/api/v1/courriers/${courrier.id}`, { method: "PATCH", body: JSON.stringify(body) });
+        await apiFetch(`/api/v1/courriers/${courrier.id}`, { method: "PUT", body: JSON.stringify(body) });
       }
       await reload();
       return { ok: true };
@@ -627,6 +631,8 @@ export function ApiStoreProvider({ children }: { children: React.ReactNode }) {
     resetData,
     audit,
     saveAgent,
+    updateAgentPhoto,
+    updateMyPhoto,
     saveDivision,
     saveSection,
     titulariser,
@@ -634,8 +640,6 @@ export function ApiStoreProvider({ children }: { children: React.ReactNode }) {
     enregistrerAvancement,
     updateGrille,
     saveDocument,
-    archiveDocument,
-    replaceDocumentVersion,
     saveCourrier,
     saveConge,
     saveCompte,

@@ -25,7 +25,7 @@ export default function CourriersPage() {
   return (
     <>
       <PageHeader
-        title="Courriers du ministère"
+        title="Courriers"
         subtitle="Registre des correspondances, circulaires et arrêtés"
       >
         {canWrite ? <ButtonLink href="/courriers/nouveau">Enregistrer un courrier</ButtonLink> : null}

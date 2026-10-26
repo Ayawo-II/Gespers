@@ -12,14 +12,12 @@ import { Loading } from "@/components/ui";
 import { RadioLomeLogo } from "@/components/RadioLomeLogo";
 import {
   IconBuilding,
-  IconCalendar,
   IconDashboard,
   IconFileText,
   IconKey,
   IconLogout,
   IconMail,
   IconMenu,
-  IconSearch,
   IconSettings,
   IconShield,
   IconUser,
@@ -39,9 +37,7 @@ const NAV: {
   { href: "/moi", label: "Moi", Icon: IconUser, group: "Suivi" },
   { href: "/agents", label: "Agents", Icon: IconUsers, perm: "agents.read.team", group: "Personnel" },
   { href: "/divisions", label: "Divisions", Icon: IconBuilding, perm: "organisation.read", group: "Personnel" },
-  { href: "/recherche", label: "Recherche", Icon: IconSearch, perm: "agents.read.team", group: "Personnel" },
-  { href: "/courriers", label: "Courriers du ministère", Icon: IconMail, perm: "courriers.read", group: "Administration" },
-  { href: "/conges", label: "Congés et permissions", Icon: IconCalendar, perm: "conges.read.team", group: "Administration" },
+  { href: "/courriers", label: "Courriers", Icon: IconMail, perm: "courriers.read", group: "Administration" },
   { href: "/administration/comptes", label: "Comptes", Icon: IconKey, perm: "comptes.manage", group: "Gouvernance" },
   { href: "/administration/roles", label: "Rôles", Icon: IconShield, perm: "roles.manage", group: "Gouvernance" },
   { href: "/administration/audit", label: "Journal d'audit", Icon: IconFileText, perm: "audit.read", group: "Gouvernance" },
@@ -94,7 +90,7 @@ function getFallbackPageInfo(pathname: string, currentAgent: Agent | null): { ti
   if (pathname === "/recherche") {
     return {
       title: "Recherche",
-      subtitle: "Agents du périmètre, courriers du ministère et pièces des dossiers numériques",
+      subtitle: "Agents du périmètre, courriers et pièces des dossiers numériques",
     };
   }
   if (pathname === "/courriers") {
@@ -133,7 +129,7 @@ function getFallbackPageInfo(pathname: string, currentAgent: Agent | null): { ti
       subtitle: "Paramètres utilisés pour les propositions automatiques de classe et d'échelon",
     };
   }
-  return { title: "Gespers Radio Lomé" };
+  return { title: "Gespres_RL Radio Lomé" };
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -215,7 +211,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   Radio Lomé
                   <span className="brand-badge">TG</span>
                 </h1>
-                <p>Gespers – Suivi agents</p>
+                <p>Gespres_RL – Suivi agents</p>
               </div>
             </div>
           </div>

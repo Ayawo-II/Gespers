@@ -54,12 +54,22 @@ const agentFields = {
   situationMatrimoniale: z.string().trim().max(100).nullable().optional(),
   formation: z.string().trim().max(200).nullable().optional(),
   service: z.string().trim().max(200).nullable().optional(),
+  membreAral: z.boolean().optional(),
+  photo: z.string().trim().max(2_000_000).nullable().optional(),
+  sectionId: z.number().int().positive(),
   chefId: z.number().int().positive().nullable().optional(),
 };
 
+const agentPhotoSchema = z.object({
+  photo: z.string().trim().max(2_000_000).nullable(),
+});
+
 const createAgentSchema = z.object(agentFields);
 const updateAgentSchema = z
-  .object(agentFields)
+  .object({
+    ...agentFields,
+    sectionId: z.number().int().positive().optional(),
+  })
   .omit({
     fonction: true,
     categorie: true,
@@ -90,6 +100,14 @@ const listAgentsQuerySchema = z.object({
 const agentIdSchema = z.coerce.number().int().positive();
 const agentInclude = {
   affectations: { select: { sectionId: true } },
+  titularisation: {
+    select: {
+      dateExamen: true,
+      resultat: true,
+      dateEffet: true,
+      referenceDecision: true,
+    },
+  },
 } as const;
 
 const dateFields = [
@@ -204,23 +222,177 @@ export async function getAgent(req: Request, res: Response) {
 }
 
 export async function createAgent(req: Request, res: Response) {
-  const data = createAgentSchema.parse(req.body);
+  const user = getAuthenticatedUser(res);
+  const { sectionId, ...data } = createAgentSchema.parse(req.body);
   try {
-    const agent = await prisma.personnes.create({ data, include: agentInclude });
+    const agent = await prisma.$transaction(async (tx) => {
+      const section = await tx.section.findUnique({
+        where: { id: sectionId },
+        select: { id: true, libelle: true, chefId: true },
+      });
+      if (!section) {
+        throw new AppError("Section introuvable.", 404, "SECTION_NOT_FOUND");
+      }
+
+      const personne = await tx.personnes.create({
+        data: {
+          ...data,
+          chefId: section.chefId ?? null,
+          email: data.email || null,
+          nationalite: data.nationalite || null,
+          situationMatrimoniale: data.situationMatrimoniale || null,
+          formation: data.formation || null,
+          service: data.service || null,
+        },
+        include: agentInclude,
+      });
+
+      await tx.affectation.deleteMany({ where: { personneId: personne.id } });
+      await tx.affectation.create({
+        data: { personneId: personne.id, sectionId: section.id },
+      });
+
+      await tx.journalAudit.create({
+        data: {
+          auteurId: user.id,
+          identifiant: user.email,
+          action: "creation_agent",
+          cible: String(personne.id),
+          details: `Création de l'agent ${personne.matricule} ${personne.nom} ${personne.prenoms}. Affectation à la section ${section.libelle} (chef de section devient supérieur direct).`,
+        },
+      });
+
+      return personne;
+    });
     res.status(201).json({ data: serializeAgent(agent) });
   } catch (error) {
     handleAgentWriteError(error);
   }
 }
 
+export async function updateMyPhoto(req: Request, res: Response) {
+  const { photo } = agentPhotoSchema.parse(req.body);
+  const user = getAuthenticatedUser(res);
+  try {
+    const agent = await prisma.$transaction(async (tx) => {
+      const updated = await tx.personnes.update({
+        where: { id: user.personneId },
+        data: { photo: photo && photo.length > 0 ? photo : null },
+        select: { id: true, photo: true },
+      });
+      await tx.journalAudit.create({
+        data: {
+          auteurId: user.id,
+          identifiant: user.email,
+          action: "modification_photo_agent",
+          cible: String(user.personneId),
+          details: updated.photo
+            ? "Photo de profil mise à jour."
+            : "Photo de profil supprimée.",
+        },
+      });
+      return updated;
+    });
+    res.json({ data: agent });
+  } catch (error) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "P2025"
+    ) {
+      throw new AppError("Agent introuvable.", 404, "AGENT_NOT_FOUND");
+    }
+    throw error;
+  }
+}
+
+export async function updateAgentPhoto(req: Request, res: Response) {
+  const id = parseId(req.params.id);
+  const { photo } = agentPhotoSchema.parse(req.body);
+  const user = getAuthenticatedUser(res);
+  try {
+    const agent = await prisma.$transaction(async (tx) => {
+      const updated = await tx.personnes.update({
+        where: { id },
+        data: { photo: photo && photo.length > 0 ? photo : null },
+        select: { id: true, photo: true },
+      });
+      await tx.journalAudit.create({
+        data: {
+          auteurId: user.id,
+          identifiant: user.email,
+          action: "modification_photo_agent",
+          cible: String(id),
+          details: updated.photo
+            ? "Photo de profil mise à jour."
+            : "Photo de profil supprimée.",
+        },
+      });
+      return updated;
+    });
+    res.json({ data: agent });
+  } catch (error) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "P2025"
+    ) {
+      throw new AppError("Agent introuvable.", 404, "AGENT_NOT_FOUND");
+    }
+    throw error;
+  }
+}
+
 export async function updateAgent(req: Request, res: Response) {
   const id = parseId(req.params.id);
-  const data = updateAgentSchema.parse(req.body);
+  const user = getAuthenticatedUser(res);
+  const { sectionId, ...data } = updateAgentSchema.parse(req.body);
   try {
-    const agent = await prisma.personnes.update({
-      where: { id },
-      data,
-      include: agentInclude,
+    const agent = await prisma.$transaction(async (tx) => {
+      if (sectionId !== undefined) {
+        const section = await tx.section.findUnique({
+          where: { id: sectionId },
+          select: { id: true, libelle: true, chefId: true },
+        });
+        if (!section) {
+          throw new AppError("Section introuvable.", 404, "SECTION_NOT_FOUND");
+        }
+
+        const personne = await tx.personnes.update({
+          where: { id },
+          data: {
+            ...data,
+            chefId: section.chefId ?? null,
+          },
+          include: agentInclude,
+        });
+
+        await tx.affectation.deleteMany({ where: { personneId: personne.id } });
+        await tx.affectation.create({
+          data: { personneId: personne.id, sectionId: section.id },
+        });
+
+        await tx.journalAudit.create({
+          data: {
+            auteurId: user.id,
+            identifiant: user.email,
+            action: "mise_a_jour_agent_affectation",
+            cible: String(personne.id),
+            details: `Changement d'affectation vers la section ${section.libelle} (chef de section devient supérieur direct).`,
+          },
+        });
+
+        return personne;
+      }
+
+      const personne = await tx.personnes.update({
+        where: { id },
+        data,
+        include: agentInclude,
+      });
+      return personne;
     });
     res.json({ data: serializeAgent(agent) });
   } catch (error) {

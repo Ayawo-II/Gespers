@@ -11,7 +11,11 @@ export default function MaSectionPage() {
 
   const sections = sectionsDuChef(state.sections, currentAgent);
   const vues = sections.map((s) => vueSection(s, state.agents, state.affectations));
-  const agents = agentsDeMaSection(state.agents, currentAgent);
+  const agents = agentsDeMaSection(state.agents, currentAgent, {
+    affectations: state.affectations,
+    sections: state.sections,
+    divisions: state.divisions,
+  });
   const effectif = vues.length
     ? vues.reduce((n, v) => n + v.membres.length, 0)
     : agents.length;

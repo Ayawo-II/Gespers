@@ -89,7 +89,7 @@ enum TypeCourrier {
   ENTRANT
   SORTANT
   CIRCULAIRE
-  ARRETE_MINISTERIEL
+  COURRIER_SIMPLE
 }
 
 // --- Agents et organisation ---
@@ -157,6 +157,8 @@ model Personnes {
   situationMatrimoniale   String?
   formation               String?
   service                 String?
+  membreAral              Boolean       @default(false)
+  photo                   String?
   chefId                  Int?
   chef                    Personnes?    @relation("Hierarchie", fields: [chefId], references: [id], onDelete: SetNull)
   subordonnes             Personnes[]   @relation("Hierarchie")

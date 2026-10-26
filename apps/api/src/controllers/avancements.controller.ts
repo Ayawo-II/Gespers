@@ -1,8 +1,10 @@
 import { NatureModif } from "@prisma/client";
 import type { Request, Response } from "express";
 import { z } from "zod";
+import { prisma } from "../config/prisma.js";
 import { AppError } from "../middlewares/errorHandler.js";
 import { getAuthenticatedUser } from "../middlewares/authenticate.js";
+import { agentReadWhere } from "../services/agent-access.js";
 import {
   createManualAdvancement,
   listAdvancements,
@@ -43,6 +45,14 @@ function parsePersonneId(value: string | string[] | undefined): number {
 
 export async function listAgentAdvancements(req: Request, res: Response) {
   const personneId = parsePersonneId(req.params.id);
+  const user = getAuthenticatedUser(res);
+  const visible = await prisma.personnes.findFirst({
+    where: { id: personneId, ...agentReadWhere(user) },
+    select: { id: true },
+  });
+  if (!visible) {
+    throw new AppError("Agent introuvable.", 404, "AGENT_NOT_FOUND");
+  }
   const advancements = await listAdvancements(personneId);
   if (!advancements) {
     throw new AppError("Agent introuvable.", 404, "AGENT_NOT_FOUND");

@@ -1,32 +1,88 @@
 import type { Affectation, Agent, Compte, Division, Section } from "@/lib/types";
 import { hasPermission } from "@/lib/rbac";
 
-export function visibleAgents(all: Agent[], compte: Compte | null, self?: Agent | null) {
+type VisibilityContext = {
+  affectations?: Affectation[];
+  sections?: Section[];
+  divisions?: Division[];
+};
+
+function teamIds(
+  agents: Agent[],
+  self: Agent,
+  role: string,
+  { affectations = [], sections = [], divisions = [] }: VisibilityContext,
+): Set<string> {
+  const ids = new Set<string>([self.id]);
+  for (const agent of agents) {
+    if (agent.chefId === self.id) ids.add(agent.id);
+  }
+
+  if (role === "CHEF_SECTION" || role === "chef") {
+    const sectionIds = new Set(sections.filter((s) => s.chefId === self.id).map((s) => s.id));
+    for (const aff of affectations) {
+      if (aff.agentId && aff.sectionId && sectionIds.has(aff.sectionId)) ids.add(aff.agentId);
+    }
+  }
+
+  if (role === "CHEF_DIVISION") {
+    const divisionIds = new Set(divisions.filter((d) => d.chefId === self.id).map((d) => d.id));
+    const sectionIds = new Set(
+      sections.filter((s) => divisionIds.has(s.divisionId)).map((s) => s.id),
+    );
+    for (const aff of affectations) {
+      if (aff.agentId && aff.sectionId && sectionIds.has(aff.sectionId)) ids.add(aff.agentId);
+    }
+  }
+
+  return ids;
+}
+
+export function visibleAgents(
+  all: Agent[],
+  compte: Compte | null,
+  self?: Agent | null,
+  context: VisibilityContext = {},
+) {
   if (!compte) return [];
   if (hasPermission(compte.role, "agents.read.all")) return all;
   if (hasPermission(compte.role, "agents.read.team") && self) {
-    return all.filter((a) => a.id === self.id || a.chefId === self.id);
+    const ids = teamIds(all, self, compte.role, context);
+    return all.filter((a) => ids.has(a.id));
   }
   if (self) return all.filter((a) => a.id === self.id);
   return [];
 }
 
-export function canSeeAgent(agent: Agent, compte: Compte | null, self?: Agent | null) {
-  return visibleAgents([agent], compte, self).length === 1;
+export function canSeeAgent(
+  agent: Agent,
+  compte: Compte | null,
+  self?: Agent | null,
+  context: VisibilityContext = {},
+) {
+  return visibleAgents([agent], compte, self, context).length === 1;
 }
 
-/** Agents rattachés à la section d'un chef (lui-même + agents dont chefId = chef). */
-export function agentsDeMaSection(agents: Agent[], self: Agent | null) {
+/** Agents rattachés à la section d'un chef (affectations + agents dont chefId = chef). */
+export function agentsDeMaSection(
+  agents: Agent[],
+  self: Agent | null,
+  context: VisibilityContext = {},
+) {
   if (!self) return [];
-  return agents.filter((a) => a.id === self.id || a.chefId === self.id);
+  const ids = teamIds(agents, self, "CHEF_SECTION", context);
+  return agents.filter((a) => ids.has(a.id));
 }
 
-/** Agents rattachés à la division d'un chef (lui-même, agents directs et agents des chefs de section de la division). */
-export function agentsDeMaDivision(agents: Agent[], self: Agent | null) {
+/** Agents rattachés à la division d'un chef (affectations + agents dont chefId = chef). */
+export function agentsDeMaDivision(
+  agents: Agent[],
+  self: Agent | null,
+  context: VisibilityContext = {},
+) {
   if (!self) return [];
-  const direct = agents.filter((a) => a.id === self.id || a.chefId === self.id);
-  const chefsSectionIds = new Set(direct.map((a) => a.id));
-  return agents.filter((a) => chefsSectionIds.has(a.id) || (a.chefId && chefsSectionIds.has(a.chefId)));
+  const ids = teamIds(agents, self, "CHEF_DIVISION", context);
+  return agents.filter((a) => ids.has(a.id));
 }
 
 /** Division dont l'agent est le chef (à défaut, la division correspondant à son service). */
