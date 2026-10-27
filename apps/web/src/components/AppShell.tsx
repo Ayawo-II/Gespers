@@ -9,6 +9,7 @@ import { canAccessPath, hasPermission, landingPathForRole, visibleInNav, type Pe
 import { ROLE_LABELS, type Agent } from "@/lib/types";
 import { fullName } from "@/lib/utils";
 import { Loading } from "@/components/ui";
+import { FirstLoginGate } from "@/components/FirstLoginGate";
 import { RadioLomeLogo } from "@/components/RadioLomeLogo";
 import {
   IconBuilding,
@@ -146,19 +147,27 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setOpen(false);
   }
 
+  const delegatedPermissions = useMemo(
+    () => currentCompte?.permissions ?? [],
+    [currentCompte?.permissions],
+  );
+
   useEffect(() => {
     if (!ready) return;
     if (!session || !currentCompte) {
       router.replace("/connexion");
       return;
     }
-    if (!canAccessPath(currentCompte.role, pathname)) {
+    if (session.mustChangePassword) return;
+    if (!canAccessPath(currentCompte.role, pathname, delegatedPermissions)) {
       router.replace(landingPathForRole(currentCompte.role));
     }
-  }, [ready, session, currentCompte, pathname, router]);
+  }, [ready, session, currentCompte, pathname, router, delegatedPermissions]);
 
   const role = currentCompte?.role;
-  const allowed = role ? canAccessPath(role, pathname) : false;
+  const allowed = role
+    ? canAccessPath(role, pathname, delegatedPermissions)
+    : false;
 
   const items = useMemo(() => {
     if (!role) return [];
@@ -166,20 +175,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       if (!visibleInNav(role, item.href)) return false;
       if (!item.perm) return true;
       if (item.perm === "agents.read.team") {
-        return hasPermission(role, "agents.read.team") || hasPermission(role, "agents.read.all");
+        return (
+          hasPermission(role, "agents.read.team", delegatedPermissions) ||
+          hasPermission(role, "agents.read.all", delegatedPermissions)
+        );
       }
       if (item.perm === "conges.read.team") {
         return (
-          hasPermission(role, "conges.read.team") ||
-          hasPermission(role, "conges.read.all") ||
-          hasPermission(role, "conges.read.self")
+          hasPermission(role, "conges.read.team", delegatedPermissions) ||
+          hasPermission(role, "conges.read.all", delegatedPermissions) ||
+          hasPermission(role, "conges.read.self", delegatedPermissions)
         );
       }
-      return hasPermission(role, item.perm);
+      return hasPermission(role, item.perm, delegatedPermissions);
     });
-  }, [role]);
+  }, [role, delegatedPermissions]);
 
   if (!ready || !currentCompte) return <Loading />;
+  if (session?.mustChangePassword) return <FirstLoginGate />;
 
   const grouped = items.reduce<Record<string, typeof items>>((acc, item) => {
     acc[item.group] ??= [];

@@ -246,6 +246,15 @@ export async function downloadDocument(req: Request, res: Response) {
 
   const mimeType = document.mimeType ?? mimeTypeForStorageKey(document.lien);
   const filePath = resolveStoredFile(document.lien);
+  await prisma.journalAudit.create({
+    data: {
+      auteurId: user.id,
+      identifiant: user.email,
+      action: "telechargement_document",
+      cible: String(id),
+      details: `Téléchargement du document « ${document.nomFichier ?? `document-${id}`} ».`,
+    },
+  });
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Content-Type", mimeType);
   res.download(filePath, document.nomFichier ?? `document-${id}`, (error) => {

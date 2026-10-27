@@ -1,7 +1,12 @@
+import { randomBytes } from "node:crypto";
+import argon2 from "argon2";
+import { Role, type Prisma } from "@prisma/client";
 import type { Request, Response } from "express";
 import { z } from "zod";
 import { prisma } from "../config/prisma.js";
+import type { AuthenticatedUser } from "../middlewares/authenticate.js";
 import { getAuthenticatedUser } from "../middlewares/authenticate.js";
+import { hasEffectivePermission } from "../middlewares/authorize.js";
 import { AppError } from "../middlewares/errorHandler.js";
 import { agentReadWhere } from "../services/agent-access.js";
 
@@ -64,11 +69,23 @@ const agentPhotoSchema = z.object({
   photo: z.string().trim().max(2_000_000).nullable(),
 });
 
-const createAgentSchema = z.object(agentFields);
+const createAgentSchema = z
+  .object({
+    ...agentFields,
+    email: z.email().trim().toLowerCase().max(200),
+    sectionId: z.number().int().positive().optional(),
+    divisionId: z.number().int().positive().optional(),
+  })
+  .refine((data) => data.sectionId !== undefined || data.divisionId !== undefined, {
+    message: "Une division ou une section doit être renseignée.",
+    path: ["sectionId"],
+  });
 const updateAgentSchema = z
   .object({
     ...agentFields,
+    email: z.email().trim().toLowerCase().max(200).optional(),
     sectionId: z.number().int().positive().optional(),
+    divisionId: z.number().int().positive().optional(),
   })
   .omit({
     fonction: true,
@@ -147,6 +164,132 @@ function parseId(value: string | string[] | undefined): number {
   return result.data;
 }
 
+interface AgentPlacement {
+  divisionId: number;
+  divisionLibelle: string;
+  sectionId: number | null;
+  sectionLibelle: string | null;
+  chefId: number | null;
+}
+
+async function resolveAgentPlacement(
+  tx: Prisma.TransactionClient,
+  input: { sectionId?: number; divisionId?: number },
+  user: AuthenticatedUser,
+  restrictToOwnDivision: boolean,
+): Promise<AgentPlacement> {
+  if (input.sectionId !== undefined) {
+    const section = await tx.section.findUnique({
+      where: { id: input.sectionId },
+      select: {
+        id: true,
+        libelle: true,
+        chefId: true,
+        divisionId: true,
+        division: { select: { id: true, libelle: true, chefId: true } },
+      },
+    });
+    if (!section) {
+      throw new AppError("Section introuvable.", 404, "SECTION_NOT_FOUND");
+    }
+    if (
+      input.divisionId !== undefined &&
+      input.divisionId !== section.divisionId
+    ) {
+      throw new AppError(
+        "La section choisie n’appartient pas à la division indiquée.",
+        400,
+        "SECTION_DIVISION_MISMATCH",
+      );
+    }
+    if (
+      restrictToOwnDivision &&
+      section.division.chefId !== user.personneId
+    ) {
+      throw new AppError(
+        "Vous ne pouvez créer un agent que dans votre division.",
+        403,
+        "DIVISION_SCOPE_FORBIDDEN",
+      );
+    }
+    return {
+      divisionId: section.divisionId,
+      divisionLibelle: section.division.libelle,
+      sectionId: section.id,
+      sectionLibelle: section.libelle,
+      chefId: section.chefId ?? section.division.chefId ?? null,
+    };
+  }
+
+  if (input.divisionId !== undefined) {
+    const division = await tx.division.findUnique({
+      where: { id: input.divisionId },
+      select: { id: true, libelle: true, chefId: true },
+    });
+    if (!division) {
+      throw new AppError("Division introuvable.", 404, "DIVISION_NOT_FOUND");
+    }
+    if (restrictToOwnDivision && division.chefId !== user.personneId) {
+      throw new AppError(
+        "Vous ne pouvez créer un agent que dans votre division.",
+        403,
+        "DIVISION_SCOPE_FORBIDDEN",
+      );
+    }
+    return {
+      divisionId: division.id,
+      divisionLibelle: division.libelle,
+      sectionId: null,
+      sectionLibelle: null,
+      chefId: division.chefId ?? null,
+    };
+  }
+
+  throw new AppError(
+    "Une division ou une section doit être renseignée.",
+    400,
+    "AGENT_PLACEMENT_REQUIRED",
+  );
+}
+
+function describePlacement(placement: AgentPlacement): string {
+  return placement.sectionLibelle
+    ? `la section ${placement.sectionLibelle} (division ${placement.divisionLibelle})`
+    : `la division ${placement.divisionLibelle}`;
+}
+
+async function syncAccountEmail(
+  tx: Prisma.TransactionClient,
+  personneId: number,
+  email: string,
+) {
+  const account = await tx.utilisateur.findUnique({
+    where: { personneId },
+    select: { id: true, email: true },
+  });
+  if (!account || account.email === email) return;
+
+  const emailOwner = await tx.utilisateur.findUnique({
+    where: { email },
+    select: { id: true },
+  });
+  if (emailOwner && emailOwner.id !== account.id) {
+    throw new AppError(
+      "Cette adresse e-mail est déjà utilisée par un compte.",
+      409,
+      "EMAIL_ALREADY_USED",
+    );
+  }
+  await tx.utilisateur.update({
+    where: { id: account.id },
+    data: { email },
+  });
+}
+
+function generateTemporaryPassword(): string {
+  return randomBytes(18).toString("base64url");
+}
+
 function handleAgentWriteError(error: unknown): never {
   if (
     typeof error === "object" &&
@@ -154,6 +297,20 @@ function handleAgentWriteError(error: unknown): never {
     "code" in error &&
     error.code === "P2002"
   ) {
+    const target =
+      "meta" in error &&
+      typeof error.meta === "object" &&
+      error.meta !== null &&
+      "target" in error.meta
+        ? String(error.meta.target)
+        : "";
+    if (target.includes("email")) {
+      throw new AppError(
+        "Cette adresse e-mail est déjà utilisée par un compte.",
+        409,
+        "EMAIL_ALREADY_USED",
+      );
+    }
     throw new AppError("Ce matricule existe déjà.", 409, "DUPLICATE_MATRICULE");
   }
 
@@ -223,33 +380,76 @@ export async function getAgent(req: Request, res: Response) {
 
 export async function createAgent(req: Request, res: Response) {
   const user = getAuthenticatedUser(res);
-  const { sectionId, ...data } = createAgentSchema.parse(req.body);
+  const { sectionId, divisionId, ...data } = createAgentSchema.parse(req.body);
+
+  const canWriteAll = hasEffectivePermission(user, "agents.write");
+  const canCreateOwnDivision = hasEffectivePermission(
+    user,
+    "agents.create.division",
+  );
+  if (!canWriteAll && !canCreateOwnDivision) {
+    throw new AppError(
+      "Vous n’êtes pas autorisé à créer un agent.",
+      403,
+      "FORBIDDEN",
+    );
+  }
+
+  const temporaryPassword = generateTemporaryPassword();
+  const passwordHash = await argon2.hash(temporaryPassword, {
+    type: argon2.argon2id,
+  });
+
   try {
     const agent = await prisma.$transaction(async (tx) => {
-      const section = await tx.section.findUnique({
-        where: { id: sectionId },
-        select: { id: true, libelle: true, chefId: true },
+      const placement = await resolveAgentPlacement(
+        tx,
+        { sectionId, divisionId },
+        user,
+        !canWriteAll,
+      );
+
+      const existingAccount = await tx.utilisateur.findUnique({
+        where: { email: data.email },
+        select: { id: true },
       });
-      if (!section) {
-        throw new AppError("Section introuvable.", 404, "SECTION_NOT_FOUND");
+      if (existingAccount) {
+        throw new AppError(
+          "Cette adresse e-mail est déjà utilisée par un compte.",
+          409,
+          "EMAIL_ALREADY_USED",
+        );
       }
 
       const personne = await tx.personnes.create({
         data: {
           ...data,
-          chefId: section.chefId ?? null,
-          email: data.email || null,
+          chefId: placement.chefId,
+          email: data.email,
           nationalite: data.nationalite || null,
           situationMatrimoniale: data.situationMatrimoniale || null,
           formation: data.formation || null,
-          service: data.service || null,
+          service: placement.divisionLibelle,
         },
         include: agentInclude,
       });
 
       await tx.affectation.deleteMany({ where: { personneId: personne.id } });
-      await tx.affectation.create({
-        data: { personneId: personne.id, sectionId: section.id },
+      if (placement.sectionId !== null) {
+        await tx.affectation.create({
+          data: { personneId: personne.id, sectionId: placement.sectionId },
+        });
+      }
+
+      const account = await tx.utilisateur.create({
+        data: {
+          email: data.email,
+          personneId: personne.id,
+          role: Role.AGENT,
+          passwordHash,
+          mustChangePassword: true,
+        },
+        select: { id: true, email: true },
       });
 
       await tx.journalAudit.create({
@@ -258,13 +458,23 @@ export async function createAgent(req: Request, res: Response) {
           identifiant: user.email,
           action: "creation_agent",
           cible: String(personne.id),
-          details: `Création de l'agent ${personne.matricule} ${personne.nom} ${personne.prenoms}. Affectation à la section ${section.libelle} (chef de section devient supérieur direct).`,
+          details: `Création de l'agent ${personne.matricule} ${personne.nom} ${personne.prenoms}, rattaché à ${describePlacement(placement)}${canWriteAll ? "" : " via une permission déléguée"}.`,
+        },
+      });
+
+      await tx.journalAudit.create({
+        data: {
+          auteurId: user.id,
+          identifiant: user.email,
+          action: "creation_compte",
+          cible: String(account.id),
+          details: `Création automatique du compte ${account.email} (rôle AGENT) pour l'agent ${personne.matricule}. Changement de mot de passe exigé à la première connexion.`,
         },
       });
 
       return personne;
     });
-    res.status(201).json({ data: serializeAgent(agent) });
+    res.status(201).json({ data: serializeAgent(agent), temporaryPassword });
   } catch (error) {
     handleAgentWriteError(error);
   }
@@ -348,31 +558,38 @@ export async function updateAgentPhoto(req: Request, res: Response) {
 export async function updateAgent(req: Request, res: Response) {
   const id = parseId(req.params.id);
   const user = getAuthenticatedUser(res);
-  const { sectionId, ...data } = updateAgentSchema.parse(req.body);
+  const { sectionId, divisionId, ...data } = updateAgentSchema.parse(req.body);
+  const hasPlacement = sectionId !== undefined || divisionId !== undefined;
   try {
     const agent = await prisma.$transaction(async (tx) => {
-      if (sectionId !== undefined) {
-        const section = await tx.section.findUnique({
-          where: { id: sectionId },
-          select: { id: true, libelle: true, chefId: true },
-        });
-        if (!section) {
-          throw new AppError("Section introuvable.", 404, "SECTION_NOT_FOUND");
-        }
+      const updateData: Prisma.PersonnesUncheckedUpdateInput = { ...data };
+
+      if (hasPlacement) {
+        const placement = await resolveAgentPlacement(
+          tx,
+          { sectionId, divisionId },
+          user,
+          false,
+        );
+        updateData.chefId = placement.chefId;
+        updateData.service = placement.divisionLibelle;
 
         const personne = await tx.personnes.update({
           where: { id },
-          data: {
-            ...data,
-            chefId: section.chefId ?? null,
-          },
+          data: updateData,
           include: agentInclude,
         });
 
+        if (data.email !== undefined) {
+          await syncAccountEmail(tx, personne.id, data.email);
+        }
+
         await tx.affectation.deleteMany({ where: { personneId: personne.id } });
-        await tx.affectation.create({
-          data: { personneId: personne.id, sectionId: section.id },
-        });
+        if (placement.sectionId !== null) {
+          await tx.affectation.create({
+            data: { personneId: personne.id, sectionId: placement.sectionId },
+          });
+        }
 
         await tx.journalAudit.create({
           data: {
@@ -380,18 +597,45 @@ export async function updateAgent(req: Request, res: Response) {
             identifiant: user.email,
             action: "mise_a_jour_agent_affectation",
             cible: String(personne.id),
-            details: `Changement d'affectation vers la section ${section.libelle} (chef de section devient supérieur direct).`,
+            details: `Changement d'affectation vers ${describePlacement(placement)}.`,
           },
         });
+
+        if (Object.keys(data).length > 0) {
+          await tx.journalAudit.create({
+            data: {
+              auteurId: user.id,
+              identifiant: user.email,
+              action: "modification_agent",
+              cible: String(personne.id),
+              details: `Modification de l'agent ${personne.matricule}. Champs modifiés : ${Object.keys(data).join(", ")}.`,
+            },
+          });
+        }
 
         return personne;
       }
 
       const personne = await tx.personnes.update({
         where: { id },
-        data,
+        data: updateData,
         include: agentInclude,
       });
+
+      if (data.email !== undefined) {
+        await syncAccountEmail(tx, personne.id, data.email);
+      }
+
+      await tx.journalAudit.create({
+        data: {
+          auteurId: user.id,
+          identifiant: user.email,
+          action: "modification_agent",
+          cible: String(personne.id),
+          details: `Modification de l'agent ${personne.matricule}. Champs modifiés : ${Object.keys(data).join(", ")}.`,
+        },
+      });
+
       return personne;
     });
     res.json({ data: serializeAgent(agent) });

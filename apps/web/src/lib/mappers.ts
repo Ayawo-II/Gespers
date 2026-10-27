@@ -269,7 +269,7 @@ export function agentToApiPayload(agent: Agent, isNew: boolean): Record<string, 
     diplome: agent.diplome || "",
     matricule: agent.matricule,
     typeAgent: typeAgentToApi(agent.typeAgent || agent.statut),
-    email: agent.email || null,
+    ...(agent.email ? { email: agent.email } : {}),
     nationalite: agent.nationalite || null,
     situationMatrimoniale: agent.situationMatrimoniale || null,
     formation: agent.formation || null,
@@ -278,6 +278,7 @@ export function agentToApiPayload(agent: Agent, isNew: boolean): Record<string, 
     photo: agent.photo || null,
     chefId: agent.chefId ? Number(agent.chefId) : null,
     ...(agent.sectionId ? { sectionId: Number(agent.sectionId) } : {}),
+    ...(agent.divisionId ? { divisionId: Number(agent.divisionId) } : {}),
   };
   if (isNew) {
     return {
@@ -307,6 +308,11 @@ export function mapCompte(c: ApiRecord): Compte {
     agentId: c.personneId ? str(c.personneId) : "",
     personneId: c.personneId ? str(c.personneId) : undefined,
     role: roleFromApi(c.role),
+    permissions: Array.isArray(c.permissions)
+      ? (c.permissions as ApiRecord[])
+          .map((permission) => str(permission.permission))
+          .filter(Boolean)
+      : [],
     actif: (c.isActive as boolean) ?? true,
     isActive: (c.isActive as boolean) ?? true,
     motifDesactivation: optStr(c.motifDesactivation),

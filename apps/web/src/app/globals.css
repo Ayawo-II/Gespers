@@ -101,28 +101,101 @@ textarea {
   overflow: hidden;
   grid-template-columns: var(--sidebar) 1fr;
   transition: grid-template-columns 0.2s ease;
-  animation: app-shell-enter 280ms ease-out both;
-}
-
-@keyframes app-shell-enter {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .app-shell {
+  .agent-create-page,
+  .agents-list-page--leaving,
+  .division-form-panel,
+  .division-details {
     animation: none;
+    transition: none;
   }
 }
 
 .app-shell.collapsed {
   grid-template-columns: 78px 1fr;
+}
+
+.agent-create-page {
+  animation: agent-create-enter 440ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes agent-create-enter {
+  from {
+    opacity: 0;
+    filter: blur(6px);
+    transform: translateY(24px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0) scale(1);
+  }
+}
+
+.agents-list-page--leaving {
+  animation: agents-list-fade-out 320ms ease-in both;
+}
+
+@keyframes agents-list-fade-out {
+  to {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.98);
+  }
+}
+
+.division-form-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  margin-bottom: -20px;
+  opacity: 0;
+  transform: translateY(-12px);
+  transition:
+    grid-template-rows 360ms cubic-bezier(0.22, 1, 0.36, 1),
+    margin-bottom 360ms ease,
+    opacity 240ms ease,
+    transform 360ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.division-form-panel.is-open {
+  grid-template-rows: 1fr;
+  margin-bottom: 0;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.division-form-panel-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.division-details {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transform: translateY(-8px);
+  transition:
+    grid-template-rows 360ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 240ms ease,
+    transform 360ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.division-details.is-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.division-details-inner {
+  min-height: 0;
+  overflow: hidden;
+  padding-top: 0;
+  transition: padding-top 360ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.division-details.is-open .division-details-inner {
+  padding-top: 14px;
 }
 
 /* Sidebar Radio Lomé - Couleur Solide Sombre */

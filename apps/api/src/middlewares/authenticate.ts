@@ -13,6 +13,7 @@ export interface AuthenticatedUser {
   role: Role;
   personneId: number;
   mustChangePassword: boolean;
+  delegatedPermissions: string[];
 }
 
 declare global {
@@ -62,6 +63,7 @@ export async function requireAuth(
           personneId: true,
           mustChangePassword: true,
           isActive: true,
+          permissions: { select: { permission: true } },
         },
       },
     },
@@ -82,6 +84,9 @@ export async function requireAuth(
     role: session.utilisateur.role,
     personneId: session.utilisateur.personneId,
     mustChangePassword: session.utilisateur.mustChangePassword,
+    delegatedPermissions: session.utilisateur.permissions.map(
+      (permission) => permission.permission,
+    ),
   };
   next();
 }

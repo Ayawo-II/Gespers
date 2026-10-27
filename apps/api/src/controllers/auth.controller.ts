@@ -25,6 +25,26 @@ const loginSchema = z.object({
   password: z.string().min(1).max(256),
 });
 
+async function recordFailedLogin(
+  email: string,
+  utilisateurId: number | null,
+  reason: string,
+) {
+  try {
+    await prisma.journalAudit.create({
+      data: {
+        auteurId: utilisateurId,
+        identifiant: email,
+        action: "connexion_echouee",
+        cible: email,
+        details: `Échec de connexion : ${reason}`,
+      },
+    });
+  } catch (error) {
+    console.error("Impossible d'enregistrer l'échec de connexion.", error);
+  }
+}
+
 export async function login(req: Request, res: Response) {
   const { email, password } = loginSchema.parse(req.body);
   const utilisateur = await prisma.utilisateur.findUnique({
@@ -37,14 +57,34 @@ export async function login(req: Request, res: Response) {
       role: true,
       personneId: true,
       mustChangePassword: true,
+      permissions: { select: { permission: true } },
     },
   });
 
-  if (
-    !utilisateur ||
-    !utilisateur.isActive ||
-    !utilisateur.passwordHash.startsWith("$argon2id$")
-  ) {
+  if (!utilisateur) {
+    await recordFailedLogin(email, null, "utilisateur inconnu.");
+    throw new AppError(
+      "Adresse e-mail ou mot de passe incorrect.",
+      401,
+      "INVALID_CREDENTIALS",
+    );
+  }
+
+  if (!utilisateur.isActive) {
+    await recordFailedLogin(email, utilisateur.id, "compte désactivé.");
+    throw new AppError(
+      "Adresse e-mail ou mot de passe incorrect.",
+      401,
+      "INVALID_CREDENTIALS",
+    );
+  }
+
+  if (!utilisateur.passwordHash.startsWith("$argon2id$")) {
+    await recordFailedLogin(
+      email,
+      utilisateur.id,
+      "empreinte de mot de passe invalide.",
+    );
     throw new AppError(
       "Adresse e-mail ou mot de passe incorrect.",
       401,
@@ -57,6 +97,7 @@ export async function login(req: Request, res: Response) {
     password,
   );
   if (!passwordMatches) {
+    await recordFailedLogin(email, utilisateur.id, "mot de passe incorrect.");
     throw new AppError(
       "Adresse e-mail ou mot de passe incorrect.",
       401,
@@ -73,6 +114,15 @@ export async function login(req: Request, res: Response) {
         tokenHash: hashSessionToken(rawToken),
         utilisateurId: utilisateur.id,
         expiresAt,
+      },
+    }),
+    prisma.journalAudit.create({
+      data: {
+        auteurId: utilisateur.id,
+        identifiant: utilisateur.email,
+        action: "connexion",
+        cible: String(utilisateur.id),
+        details: "Connexion réussie.",
       },
     }),
   ]);
@@ -93,6 +143,9 @@ export async function login(req: Request, res: Response) {
       role: utilisateur.role,
       personneId: utilisateur.personneId,
       mustChangePassword: utilisateur.mustChangePassword,
+      delegatedPermissions: utilisateur.permissions.map(
+        (permission) => permission.permission,
+      ),
     },
   });
 }
@@ -104,9 +157,28 @@ export async function getMe(_req: Request, res: Response) {
 export async function logout(req: Request, res: Response) {
   const token = getSessionToken(req);
   if (token) {
-    await prisma.session.deleteMany({
-      where: { tokenHash: hashSessionToken(token) },
+    const tokenHash = hashSessionToken(token);
+    const session = await prisma.session.findUnique({
+      where: { tokenHash },
+      select: {
+        utilisateurId: true,
+        utilisateur: { select: { email: true } },
+      },
     });
+    if (session) {
+      await prisma.$transaction([
+        prisma.session.deleteMany({ where: { tokenHash } }),
+        prisma.journalAudit.create({
+          data: {
+            auteurId: session.utilisateurId,
+            identifiant: session.utilisateur.email,
+            action: "deconnexion",
+            cible: String(session.utilisateurId),
+            details: "Déconnexion de l'utilisateur.",
+          },
+        }),
+      ]);
+    }
   }
 
   res.setHeader(

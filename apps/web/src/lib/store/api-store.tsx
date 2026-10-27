@@ -52,6 +52,16 @@ type SessionUser = {
   role: Role;
   personneId: number | null;
   mustChangePassword: boolean;
+  delegatedPermissions: string[];
+};
+
+type AuditFilters = {
+  page?: number;
+  limit?: number;
+  action?: string;
+  q?: string;
+  dateDebut?: string;
+  dateFin?: string;
 };
 
 type ApiMeResponse = { data: SessionUser };
@@ -73,9 +83,16 @@ type StoreContextValue = {
   typeDocs: TypeDocOption[];
   login: (identifiant: string, motDePasse: string) => Promise<{ ok: true; role: Role } | { ok: false; error: string }>;
   logout: () => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<Result>;
   resetData: () => void;
   audit: (entry: Omit<EntreeAudit, "id" | "date">) => void;
-  saveAgent: (agent: Agent, isNew: boolean) => Promise<Result>;
+  loadAudit: (filters?: AuditFilters) => Promise<
+    { ok: true; rows: EntreeAudit[]; total: number } | { ok: false; error: string }
+  >;
+  saveAgent: (
+    agent: Agent,
+    isNew: boolean,
+  ) => Promise<{ ok: true; temporaryPassword?: string } | { ok: false; error: string }>;
   updateAgentPhoto: (agentId: string, photo: string | null) => Promise<Result>;
   updateMyPhoto: (photo: string | null) => Promise<Result>;
   saveDivision: (division: Division, isNew: boolean) => Promise<Result>;
@@ -93,6 +110,7 @@ type StoreContextValue = {
   setCompteActif: (compteId: string, actif: boolean, motif?: string) => Promise<Result>;
   resetPassword: (compteId: string) => Promise<{ ok: true; password: string } | { ok: false; error: string }>;
   changeRole: (compteId: string, role: Role) => Promise<Result>;
+  setComptePermissions: (compteId: string, permissions: string[]) => Promise<Result>;
 };
 
 const StoreContext = createContext<StoreContextValue | null>(null);
@@ -136,8 +154,12 @@ export function ApiStoreProvider({ children }: { children: React.ReactNode }) {
   const loadSession = useCallback(async () => {
     try {
       const res = await apiFetch<ApiMeResponse>("/api/v1/auth/me");
-      setSession(res.data);
-      return res.data;
+      const user = {
+        ...res.data,
+        delegatedPermissions: res.data.delegatedPermissions ?? [],
+      };
+      setSession(user);
+      return user;
     } catch {
       setSession(null);
       return null;
@@ -254,7 +276,7 @@ export function ApiStoreProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       const user = await loadSession();
-      if (user) {
+      if (user && !user.mustChangePassword) {
         await loadTypesDocs();
         await loadInitialData();
       }
@@ -272,6 +294,7 @@ export function ApiStoreProvider({ children }: { children: React.ReactNode }) {
       agentId: session.personneId ? toStringId(session.personneId) : "",
       personneId: session.personneId ? toStringId(session.personneId) : undefined,
       role: roleFromApi(session.role),
+      permissions: session.delegatedPermissions ?? [],
       actif: true,
       isActive: true,
       tentativesEchouees: 0,
@@ -294,8 +317,10 @@ export function ApiStoreProvider({ children }: { children: React.ReactNode }) {
         }),
       });
       const user = await loadSession();
-      await loadTypesDocs();
-      await loadInitialData();
+      if (user && !user.mustChangePassword) {
+        await loadTypesDocs();
+        await loadInitialData();
+      }
       return { ok: true, role: roleFromApi(user?.role) || "AGENT" };
     } catch (error) {
       return { ok: false, error: errorMessage(error) };
@@ -312,6 +337,26 @@ export function ApiStoreProvider({ children }: { children: React.ReactNode }) {
     setState(emptyState);
   }, []);
 
+  const changePassword: StoreContextValue["changePassword"] = async (
+    currentPassword,
+    newPassword,
+  ) => {
+    try {
+      await apiFetch("/api/v1/auth/change-password", {
+        method: "POST",
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      const user = await loadSession();
+      if (user && !user.mustChangePassword) {
+        await loadTypesDocs();
+        await loadInitialData();
+      }
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: errorMessage(error) };
+    }
+  };
+
   const resetData = useCallback(() => {
     /* no-op with real API */
   }, []);
@@ -320,19 +365,46 @@ export function ApiStoreProvider({ children }: { children: React.ReactNode }) {
     /* audit is server-side */
   }, []);
 
+  const loadAudit = useCallback<StoreContextValue["loadAudit"]>(
+    async (filters = {}) => {
+      try {
+        const params = new URLSearchParams();
+        if (filters.page) params.set("page", String(filters.page));
+        if (filters.limit) params.set("limit", String(filters.limit));
+        if (filters.action) params.set("action", filters.action);
+        if (filters.q) params.set("q", filters.q);
+        if (filters.dateDebut) params.set("dateDebut", filters.dateDebut);
+        if (filters.dateFin) params.set("dateFin", filters.dateFin);
+        const query = params.toString();
+        const res = await apiFetch<{ data: ApiRecord[]; meta: { total: number } }>(
+          `/api/v1/audit${query ? `?${query}` : ""}`,
+        );
+        return {
+          ok: true,
+          rows: res.data.map(mapAudit),
+          total: res.meta?.total ?? res.data.length,
+        };
+      } catch (error) {
+        return { ok: false, error: errorMessage(error) };
+      }
+    },
+    [],
+  );
+
   const saveAgent: StoreContextValue["saveAgent"] = async (agent, isNew) => {
     try {
       if (isNew) {
-        await apiFetch("/api/v1/agents", {
+        const res = await apiFetch<{ temporaryPassword?: string }>("/api/v1/agents", {
           method: "POST",
           body: JSON.stringify(agentToApiPayload(agent, true)),
         });
-      } else {
-        await apiFetch(`/api/v1/agents/${agent.id}`, {
-          method: "PATCH",
-          body: JSON.stringify(agentToApiPayload(agent, false)),
-        });
+        await reload();
+        return { ok: true, temporaryPassword: res.temporaryPassword };
       }
+      await apiFetch(`/api/v1/agents/${agent.id}`, {
+        method: "PATCH",
+        body: JSON.stringify(agentToApiPayload(agent, false)),
+      });
       await reload();
       return { ok: true };
     } catch (error) {
@@ -619,6 +691,22 @@ export function ApiStoreProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const setComptePermissions: StoreContextValue["setComptePermissions"] = async (
+    compteId,
+    permissions,
+  ) => {
+    try {
+      await apiFetch(`/api/v1/comptes/${compteId}/permissions`, {
+        method: "PUT",
+        body: JSON.stringify({ permissions }),
+      });
+      await reload();
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: errorMessage(error) };
+    }
+  };
+
   const value: StoreContextValue = {
     ready,
     state,
@@ -628,8 +716,10 @@ export function ApiStoreProvider({ children }: { children: React.ReactNode }) {
     typeDocs,
     login,
     logout,
+    changePassword,
     resetData,
     audit,
+    loadAudit,
     saveAgent,
     updateAgentPhoto,
     updateMyPhoto,
@@ -646,6 +736,7 @@ export function ApiStoreProvider({ children }: { children: React.ReactNode }) {
     setCompteActif,
     resetPassword,
     changeRole,
+    setComptePermissions,
   };
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

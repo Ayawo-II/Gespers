@@ -21,6 +21,8 @@ export type Permission =
   | "conges.write"
   | "comptes.manage"
   | "roles.manage"
+  | "permissions.manage"
+  | "agents.create.division"
   | "audit.read"
   | "organisation.read"
   | "organisation.write"
@@ -83,6 +85,7 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "conges.write",
     "comptes.manage",
     "roles.manage",
+    "permissions.manage",
     "audit.read",
     "organisation.read",
     "organisation.write",
@@ -103,8 +106,38 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   ],
 };
 
-export function hasPermission(role: Role, permission: Permission): boolean {
-  return ROLE_PERMISSIONS[role].includes(permission);
+export const DELEGABLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
+  AGENT: [],
+  CHEF_SECTION: [],
+  CHEF_DIVISION: ["agents.create.division"],
+  RESPONSABLE_RH: [],
+  CHEF_PERSONNEL: [],
+  DG: [],
+};
+
+export function isDelegablePermission(
+  role: Role,
+  permission: Permission,
+): boolean {
+  return DELEGABLE_PERMISSIONS[role].includes(permission);
+}
+
+export function hasPermission(
+  role: Role,
+  permission: Permission,
+  delegatedPermissions: readonly string[] = [],
+): boolean {
+  return (
+    ROLE_PERMISSIONS[role].includes(permission) ||
+    delegatedPermissions.includes(permission)
+  );
+}
+
+export function hasEffectivePermission(
+  user: { role: Role; delegatedPermissions?: readonly string[] },
+  permission: Permission,
+): boolean {
+  return hasPermission(user.role, permission, user.delegatedPermissions);
 }
 
 export function requireAnyPermission(...permissions: Permission[]): RequestHandler {
@@ -115,7 +148,22 @@ export function requireAnyPermission(...permissions: Permission[]): RequestHandl
       return;
     }
 
-    if (!permissions.some((permission) => hasPermission(user.role, permission))) {
+    if (user.mustChangePassword) {
+      next(
+        new AppError(
+          "Vous devez changer votre mot de passe avant de continuer.",
+          403,
+          "PASSWORD_CHANGE_REQUIRED",
+        ),
+      );
+      return;
+    }
+
+    if (
+      !permissions.some((permission) =>
+        hasEffectivePermission(user, permission),
+      )
+    ) {
       next(new AppError("Permission insuffisante.", 403, "FORBIDDEN"));
       return;
     }

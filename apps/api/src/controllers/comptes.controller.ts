@@ -5,6 +5,10 @@ import type { Request, Response } from "express";
 import { z } from "zod";
 import { prisma } from "../config/prisma.js";
 import { getAuthenticatedUser } from "../middlewares/authenticate.js";
+import {
+  isDelegablePermission,
+  type Permission,
+} from "../middlewares/authorize.js";
 import { AppError } from "../middlewares/errorHandler.js";
 
 const idSchema = z.coerce.number().int().positive();
@@ -14,6 +18,9 @@ const createAccountSchema = z.object({
   role: z.enum(Role),
 });
 const changeRoleSchema = z.object({ role: z.enum(Role) });
+const updatePermissionsSchema = z.object({
+  permissions: z.array(z.string().trim().min(1).max(100)).max(20),
+});
 const disableSchema = z.object({
   isActive: z.boolean(),
   motifDesactivation: z.string().trim().min(1).max(1000).optional(),
@@ -31,6 +38,10 @@ const accountSelect = {
   personneId: true,
   personne: {
     select: { id: true, nom: true, prenoms: true, matricule: true },
+  },
+  permissions: {
+    select: { permission: true, accordeLe: true },
+    orderBy: { permission: "asc" },
   },
 } as const;
 
@@ -121,18 +132,38 @@ export async function updateAccountRole(req: Request, res: Response) {
   const user = getAuthenticatedUser(res);
   try {
     const account = await prisma.$transaction(async (tx) => {
-      const updated = await tx.utilisateur.update({
+      const existing = await tx.utilisateur.findUnique({
+        where: { id },
+        select: { role: true },
+      });
+      if (!existing) {
+        throw new AppError("Compte introuvable.", 404, "ACCOUNT_NOT_FOUND");
+      }
+
+      let updated = await tx.utilisateur.update({
         where: { id },
         data: { role },
         select: accountSelect,
       });
+      if (existing.role !== role) {
+        await tx.permissionUtilisateur.deleteMany({
+          where: { utilisateurId: id },
+        });
+        updated = await tx.utilisateur.findUniqueOrThrow({
+          where: { id },
+          select: accountSelect,
+        });
+      }
       await tx.journalAudit.create({
         data: {
           auteurId: user.id,
           identifiant: user.email,
           action: "changement_role",
           cible: String(id),
-          details: role,
+          details:
+            existing.role === role
+              ? `${existing.role} (inchangé)`
+              : `${existing.role} → ${role}. Permissions déléguées révoquées.`,
         },
       });
       return updated;
@@ -149,6 +180,80 @@ export async function updateAccountRole(req: Request, res: Response) {
     }
     throw error;
   }
+}
+
+export async function updateAccountPermissions(req: Request, res: Response) {
+  const id = parseId(req.params.id);
+  const { permissions } = updatePermissionsSchema.parse(req.body);
+  const nextPermissions = [...new Set(permissions)];
+  const user = getAuthenticatedUser(res);
+
+  const account = await prisma.$transaction(async (tx) => {
+    const target = await tx.utilisateur.findUnique({
+      where: { id },
+      select: {
+        email: true,
+        role: true,
+        permissions: { select: { permission: true } },
+      },
+    });
+    if (!target) {
+      throw new AppError("Compte introuvable.", 404, "ACCOUNT_NOT_FOUND");
+    }
+
+    for (const permission of nextPermissions) {
+      if (!isDelegablePermission(target.role, permission as Permission)) {
+        throw new AppError(
+          `La permission « ${permission} » ne peut pas être déléguée à ce rôle.`,
+          400,
+          "PERMISSION_NOT_DELEGABLE",
+        );
+      }
+    }
+
+    const previousPermissions = target.permissions.map(
+      (permission) => permission.permission,
+    );
+    const added = nextPermissions.filter(
+      (permission) => !previousPermissions.includes(permission),
+    );
+    const removed = previousPermissions.filter(
+      (permission) => !nextPermissions.includes(permission),
+    );
+
+    await tx.permissionUtilisateur.deleteMany({
+      where: { utilisateurId: id },
+    });
+    if (nextPermissions.length > 0) {
+      await tx.permissionUtilisateur.createMany({
+        data: nextPermissions.map((permission) => ({
+          utilisateurId: id,
+          permission,
+          accordeParId: user.id,
+        })),
+      });
+    }
+
+    if (added.length > 0 || removed.length > 0) {
+      await tx.journalAudit.create({
+        data: {
+          auteurId: user.id,
+          identifiant: user.email,
+          action: "gestion_permissions",
+          cible: String(id),
+          details: `Permissions déléguées de ${target.email} (${target.role}) : ajout [${added.join(", ") || "aucun"}], retrait [${removed.join(", ") || "aucun"}]. Liste finale : [${nextPermissions.join(", ") || "aucune"}].`,
+        },
+      });
+    }
+
+    const updated = await tx.utilisateur.findUniqueOrThrow({
+      where: { id },
+      select: accountSelect,
+    });
+    return updated;
+  });
+
+  res.json({ data: account });
 }
 
 export async function setAccountActive(req: Request, res: Response) {

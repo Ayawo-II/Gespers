@@ -123,37 +123,45 @@ export default function DivisionsPage() {
       {msg ? <Alert>{msg}</Alert> : null}
       {error ? <Alert type="error">{error}</Alert> : null}
 
-      {canWrite && showNewDivision ? (
-        <Card style={{ marginBottom: 16, borderLeft: "6px solid var(--green)" }}>
-          <h3 style={{ color: "var(--navy)", marginBottom: 12 }}>Nouvelle division</h3>
-          <form className="form" onSubmit={onCreateDivision}>
-            <div className="form-row">
-              <Field label="Libellé de la division">
-                <input
-                  value={divisionLibelle}
-                  onChange={(e) => setDivisionLibelle(e.target.value)}
-                  placeholder="Ex: Division de la communication"
-                  required
-                />
-              </Field>
-              <Field label="Chef de division">
-                <select
-                  value={divisionChefId}
-                  onChange={(e) => setDivisionChefId(e.target.value)}
-                  required
-                >
-                  <option value="">Sélectionner un agent…</option>
-                  {state.agents.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {fullName(a)} — {a.fonction || a.poste}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            </div>
-            <Button type="submit">Créer la division</Button>
-          </form>
-        </Card>
+      {canWrite ? (
+        <div
+          className={`division-form-panel ${showNewDivision ? "is-open" : ""}`}
+          aria-hidden={!showNewDivision}
+          inert={!showNewDivision}
+        >
+          <div className="division-form-panel-inner">
+            <Card style={{ marginBottom: 16, borderLeft: "6px solid var(--green)" }}>
+              <h3 style={{ color: "var(--navy)", marginBottom: 12 }}>Nouvelle division</h3>
+              <form className="form" onSubmit={onCreateDivision}>
+                <div className="form-row">
+                  <Field label="Libellé de la division">
+                    <input
+                      value={divisionLibelle}
+                      onChange={(e) => setDivisionLibelle(e.target.value)}
+                      placeholder="Ex: Division de la communication"
+                      required
+                    />
+                  </Field>
+                  <Field label="Chef de division">
+                    <select
+                      value={divisionChefId}
+                      onChange={(e) => setDivisionChefId(e.target.value)}
+                      required
+                    >
+                      <option value="">Sélectionner un agent…</option>
+                      {state.agents.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {fullName(a)} — {a.fonction || a.poste}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
+                <Button type="submit">Créer la division</Button>
+              </form>
+            </Card>
+          </div>
+        </div>
       ) : null}
 
       {divisions.length === 0 ? (
@@ -193,36 +201,48 @@ export default function DivisionsPage() {
                 </div>
               </div>
 
-              {expandedId === d.id ? (
-                <>
-                  {canWrite && sectionFormFor === d.id ? (
-                    <form className="form" onSubmit={(e) => onCreateSection(e, d.id)} style={{ marginBottom: 12 }}>
-                      <div className="form-row">
-                        <Field label="Libellé de la section">
-                          <input
-                            value={sectionLibelle}
-                            onChange={(e) => setSectionLibelle(e.target.value)}
-                            placeholder="Ex: Section reportages"
-                            required
-                          />
-                        </Field>
-                        <Field label="Chef de section">
-                          <select
-                            value={sectionChefId}
-                            onChange={(e) => setSectionChefId(e.target.value)}
-                            required
-                          >
-                            <option value="">Sélectionner un agent…</option>
-                            {state.agents.map((a) => (
-                              <option key={a.id} value={a.id}>
-                                {fullName(a)} – {a.fonction || a.poste}
-                              </option>
-                            ))}
-                          </select>
-                        </Field>
+              <div
+                className={`division-details ${expandedId === d.id ? "is-open" : ""}`}
+                aria-hidden={expandedId !== d.id}
+                inert={expandedId !== d.id}
+              >
+                <div className="division-details-inner">
+                  {canWrite ? (
+                    <div
+                      className={`division-form-panel ${sectionFormFor === d.id ? "is-open" : ""}`}
+                      aria-hidden={sectionFormFor !== d.id}
+                      inert={sectionFormFor !== d.id}
+                    >
+                      <div className="division-form-panel-inner">
+                        <form className="form" onSubmit={(e) => onCreateSection(e, d.id)} style={{ marginBottom: 12 }}>
+                          <div className="form-row">
+                            <Field label="Libellé de la section">
+                              <input
+                                value={sectionLibelle}
+                                onChange={(e) => setSectionLibelle(e.target.value)}
+                                placeholder="Ex: Section reportages"
+                                required
+                              />
+                            </Field>
+                            <Field label="Chef de section">
+                              <select
+                                value={sectionChefId}
+                                onChange={(e) => setSectionChefId(e.target.value)}
+                                required
+                              >
+                                <option value="">Sélectionner un agent…</option>
+                                {state.agents.map((a) => (
+                                  <option key={a.id} value={a.id}>
+                                    {fullName(a)} – {a.fonction || a.poste}
+                                  </option>
+                                ))}
+                              </select>
+                            </Field>
+                          </div>
+                          <Button type="submit">Ajouter la section</Button>
+                        </form>
                       </div>
-                      <Button type="submit">Ajouter la section</Button>
-                    </form>
+                    </div>
                   ) : null}
 
                   {d.sections.length === 0 ? (
@@ -247,8 +267,8 @@ export default function DivisionsPage() {
                       </table>
                     </div>
                   )}
-                </>
-              ) : null}
+                </div>
+              </div>
             </Card>
           ))}
         </div>

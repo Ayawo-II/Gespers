@@ -21,7 +21,11 @@ export const documentsReadPermissions = [
 ] as const;
 
 documentsRoutes.use(requireAuth);
-documentsRoutes.get("/types", listDocumentTypes);
+documentsRoutes.get(
+  "/types",
+  requireAnyPermission("agents.read.self"),
+  listDocumentTypes,
+);
 documentsRoutes.get("/", requireAnyPermission(...documentsReadPermissions), listDocuments);
 documentsRoutes.get(
   "/export.zip",

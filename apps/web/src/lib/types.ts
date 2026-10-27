@@ -155,6 +155,7 @@ export interface Personnes {
   email?: string;
   chefId?: string;
   sectionId?: string;
+  divisionId?: string;
   service?: string;
   poste?: string; // alias de fonction
   statut?: StatutAgent; // alias de typeAgent
@@ -303,6 +304,7 @@ export interface Utilisateur {
   agentId: string;
   personneId?: string;
   role: Role;
+  permissions?: string[];
   isActive?: boolean;
   actif: boolean;
   motifDesactivation?: string;

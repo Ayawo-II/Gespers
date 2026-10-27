@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Alert, Card, PageHeader } from "@/components/ui";
 import { useStore } from "@/lib/store/api-store";
-import { ROLE_PERMS, type Permission } from "@/lib/rbac";
+import { hasPermission, ROLE_PERMS, type Permission } from "@/lib/rbac";
 import { ROLE_LABELS, type Role } from "@/lib/types";
 import { fullName } from "@/lib/utils";
 
@@ -26,6 +26,8 @@ const PERM_LABELS: Record<Permission, string> = {
   "conges.write": "Enregistrement des congés",
   "comptes.manage": "Gestion des comptes",
   "roles.manage": "Gestion des rôles",
+  "permissions.manage": "Délégation des permissions",
+  "agents.create.division": "Création d'agents dans sa division",
   "audit.read": "Journal d'audit",
   "organisation.read": "Consultation de l'organigramme",
   "organisation.write": "Gestion de l'organigramme",
@@ -36,9 +38,16 @@ const PERMS = Object.keys(PERM_LABELS) as Permission[];
 const ROLES = Object.keys(ROLE_LABELS) as Role[];
 
 export default function RolesPage() {
-  const { state, changeRole } = useStore();
+  const { state, changeRole, setComptePermissions, currentCompte } = useStore();
   const [msg, setMsg] = useState("");
   const comptes = state.comptes.filter((c) => c.identifiant !== "systeme");
+  const canDelegate = currentCompte
+    ? hasPermission(
+        currentCompte.role,
+        "permissions.manage",
+        currentCompte.permissions,
+      )
+    : false;
 
   return (
     <>
@@ -74,6 +83,10 @@ export default function RolesPage() {
       </Card>
       <Card>
         <h3>Affecter un rôle</h3>
+        <p className="muted">
+          Seul le chef du personnel peut déléguer à un chef de division le droit
+          de créer des agents, strictement dans sa propre division.
+        </p>
         <div className="table-wrap" style={{ marginTop: 12 }}>
           <table>
             <thead>
@@ -82,6 +95,7 @@ export default function RolesPage() {
                 <th>Agent</th>
                 <th>Rôle actuel</th>
                 <th>Changer</th>
+                <th>Délégation</th>
               </tr>
             </thead>
             <tbody>
@@ -110,6 +124,37 @@ export default function RolesPage() {
                           </option>
                         ))}
                       </select>
+                    </td>
+                    <td>
+                      {c.role === "CHEF_DIVISION" ? (
+                        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <input
+                            type="checkbox"
+                            checked={
+                              c.permissions?.includes("agents.create.division") ??
+                              false
+                            }
+                            disabled={!canDelegate}
+                            onChange={async (e) => {
+                              const next = e.target.checked
+                                ? [...(c.permissions ?? []), "agents.create.division"]
+                                : (c.permissions ?? []).filter(
+                                    (permission) =>
+                                      permission !== "agents.create.division",
+                                  );
+                              const res = await setComptePermissions(c.id, next);
+                              setMsg(
+                                res.ok
+                                  ? `Délégation mise à jour pour ${c.identifiant}.`
+                                  : res.error,
+                              );
+                            }}
+                          />
+                          Créer des agents dans sa division
+                        </label>
+                      ) : (
+                        <span className="muted">—</span>
+                      )}
                     </td>
                   </tr>
                 );

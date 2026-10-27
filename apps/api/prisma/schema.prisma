@@ -301,6 +301,21 @@ model Utilisateur {
   courriersAjoutes   Courrier[]
   entreesAudit       JournalAudit[]
   sessions           Session[]
+  permissions        PermissionUtilisateur[] @relation("PermissionsUtilisateur")
+  permissionsAccordees PermissionUtilisateur[] @relation("PermissionsAccordees")
+}
+
+model PermissionUtilisateur {
+  utilisateurId Int
+  permission    String
+  accordeParId  Int?
+  accordeLe     DateTime @default(now())
+
+  utilisateur Utilisateur  @relation("PermissionsUtilisateur", fields: [utilisateurId], references: [id], onDelete: Cascade)
+  accordePar  Utilisateur? @relation("PermissionsAccordees", fields: [accordeParId], references: [id], onDelete: SetNull)
+
+  @@id([utilisateurId, permission])
+  @@index([accordeParId])
 }
 
 model Session {

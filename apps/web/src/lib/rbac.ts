@@ -19,6 +19,8 @@ export type Permission =
   | "conges.write"
   | "comptes.manage"
   | "roles.manage"
+  | "permissions.manage"
+  | "agents.create.division"
   | "audit.read"
   | "organisation.read"
   | "organisation.write"
@@ -82,6 +84,7 @@ export const ROLE_PERMS: Record<string, Permission[]> = {
     "conges.write",
     "comptes.manage",
     "roles.manage",
+    "permissions.manage",
     "audit.read",
     "organisation.read",
     "organisation.write",
@@ -150,6 +153,7 @@ export const ROLE_PERMS: Record<string, Permission[]> = {
     "conges.write",
     "comptes.manage",
     "roles.manage",
+    "permissions.manage",
     "audit.read",
     "organisation.read",
     "organisation.write",
@@ -170,9 +174,13 @@ export const ROLE_PERMS: Record<string, Permission[]> = {
   ],
 };
 
-export function hasPermission(role: Role | string, perm: Permission) {
+export function hasPermission(
+  role: Role | string,
+  perm: Permission,
+  delegated: readonly string[] = [],
+) {
   const perms = ROLE_PERMS[role];
-  return perms ? perms.includes(perm) : false;
+  return (perms ? perms.includes(perm) : false) || delegated.includes(perm);
 }
 
 /**
@@ -281,10 +289,16 @@ function matchesPathList(pathname: string, list: readonly string[]) {
   return list.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
-export function canAccessPath(role: Role | string, pathname: string): boolean {
+export function canAccessPath(
+  role: Role | string,
+  pathname: string,
+  delegated: readonly string[] = [],
+): boolean {
+  const can = (permission: Permission) =>
+    hasPermission(role, permission, delegated);
   const scoped = NAV_PATHS_BY_ROLE[role];
   if (scoped && !matchesPathList(pathname, scoped)) return false;
-  if (pathname.startsWith("/tableau-de-bord")) return hasPermission(role, "dashboard.read");
+  if (pathname.startsWith("/tableau-de-bord")) return can("dashboard.read");
   if (pathname.startsWith("/moi") || pathname.startsWith("/mon-dossier")) return true;
   if (pathname.startsWith("/ma-section")) {
     return role === "CHEF_SECTION" || role === "chef";
@@ -293,35 +307,33 @@ export function canAccessPath(role: Role | string, pathname: string): boolean {
     return role === "CHEF_DIVISION";
   }
   if (pathname.startsWith("/recherche")) {
-    return hasPermission(role, "agents.read.all") || hasPermission(role, "agents.read.team");
+    return can("agents.read.all") || can("agents.read.team");
   }
-  if (pathname.startsWith("/divisions")) return hasPermission(role, "organisation.read");
+  if (pathname.startsWith("/divisions")) return can("organisation.read");
   if (pathname.startsWith("/agents")) {
-    return (
-      hasPermission(role, "agents.read.all") ||
-      hasPermission(role, "agents.read.team")
-    );
+    return can("agents.read.all") || can("agents.read.team");
   }
   if (pathname.startsWith("/parametres/grilles")) {
-    return hasPermission(role, "grilles.read") || hasPermission(role, "grilles.write");
+    return can("grilles.read") || can("grilles.write");
   }
-  if (pathname.startsWith("/avancements")) return hasPermission(role, "avancements.read");
-  if (pathname.startsWith("/courriers")) return hasPermission(role, "courriers.read");
+  if (pathname.startsWith("/avancements")) return can("avancements.read");
+  if (pathname.startsWith("/courriers")) return can("courriers.read");
   if (pathname.startsWith("/conges")) {
     return (
-      hasPermission(role, "conges.read.all") ||
-      hasPermission(role, "conges.read.team") ||
-      hasPermission(role, "conges.read.self")
+      can("conges.read.all") ||
+      can("conges.read.team") ||
+      can("conges.read.self")
     );
   }
-  if (pathname.startsWith("/administration/comptes")) return hasPermission(role, "comptes.manage");
-  if (pathname.startsWith("/administration/roles")) return hasPermission(role, "roles.manage");
-  if (pathname.startsWith("/administration/audit")) return hasPermission(role, "audit.read");
+  if (pathname.startsWith("/administration/comptes")) return can("comptes.manage");
+  if (pathname.startsWith("/administration/roles")) return can("roles.manage");
+  if (pathname.startsWith("/administration/audit")) return can("audit.read");
   if (pathname.startsWith("/administration")) {
     return (
-      hasPermission(role, "comptes.manage") ||
-      hasPermission(role, "audit.read") ||
-      hasPermission(role, "roles.manage")
+      can("comptes.manage") ||
+      can("audit.read") ||
+      can("roles.manage") ||
+      can("permissions.manage")
     );
   }
   return false;

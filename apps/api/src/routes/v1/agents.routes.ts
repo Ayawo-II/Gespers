@@ -24,7 +24,11 @@ const requireAgentReadAccess = requireAnyPermission(
 
 agentsRoutes.get("/", requireAgentReadAccess, listAgents);
 agentsRoutes.get("/:id", requireAgentReadAccess, getAgent);
-agentsRoutes.post("/", requirePermission("agents.write"), createAgent);
+agentsRoutes.post(
+  "/",
+  requireAnyPermission("agents.write", "agents.create.division"),
+  createAgent,
+);
 agentsRoutes.patch("/me/photo", requirePermission("agents.read.self"), updateMyPhoto);
 agentsRoutes.patch("/:id/photo", requirePermission("agents.photo.write"), updateAgentPhoto);
 agentsRoutes.patch("/:id", requirePermission("agents.write"), updateAgent);

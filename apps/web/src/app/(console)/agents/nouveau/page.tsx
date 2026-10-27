@@ -7,16 +7,29 @@ import { hasPermission } from "@/lib/rbac";
 
 export default function NouvelAgentPage() {
   const { currentCompte } = useStore();
-  if (!currentCompte || !hasPermission(currentCompte.role, "agents.write")) {
-    return <Alert type="error">Seul le responsable RH ou le chef du personnel peut enregistrer un agent.</Alert>;
+  const canCreate =
+    currentCompte &&
+    (hasPermission(currentCompte.role, "agents.write") ||
+      hasPermission(
+        currentCompte.role,
+        "agents.create.division",
+        currentCompte.permissions,
+      ));
+  if (!canCreate) {
+    return (
+      <Alert type="error">
+        Seul le responsable RH, le chef du personnel ou un chef de division
+        habilité peut enregistrer un agent.
+      </Alert>
+    );
   }
   return (
-    <>
+    <div className="agent-create-page">
       <PageHeader
         title="Enregistrer un agent"
         subtitle="Identité, état civil, contact, formation et poste. Un dossier numérique est créé automatiquement."
       />
       <AgentForm isNew />
-    </>
+    </div>
   );
 }

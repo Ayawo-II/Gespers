@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { z } from "zod";
 import { prisma } from "../config/prisma.js";
+import { getAuthenticatedUser } from "../middlewares/authenticate.js";
 import { AppError } from "../middlewares/errorHandler.js";
 
 const organisationIdSchema = z.coerce.number().int().positive();
@@ -137,10 +138,23 @@ export async function getDivision(req: Request, res: Response) {
 
 export async function createDivision(req: Request, res: Response) {
   const data = divisionCreateSchema.parse(req.body);
+  const user = getAuthenticatedUser(res);
   try {
-    const division = await prisma.division.create({
-      data,
-      include: { chef: { select: chefSelect } },
+    const division = await prisma.$transaction(async (tx) => {
+      const created = await tx.division.create({
+        data,
+        include: { chef: { select: chefSelect } },
+      });
+      await tx.journalAudit.create({
+        data: {
+          auteurId: user.id,
+          identifiant: user.email,
+          action: "creation_division",
+          cible: String(created.id),
+          details: `Création de la division ${created.libelle} (chef : agent #${created.chefId}).`,
+        },
+      });
+      return created;
     });
     res.status(201).json({ data: division });
   } catch (error) {
@@ -151,11 +165,24 @@ export async function createDivision(req: Request, res: Response) {
 export async function updateDivision(req: Request, res: Response) {
   const id = parseId(req.params.id, "division");
   const data = divisionUpdateSchema.parse(req.body);
+  const user = getAuthenticatedUser(res);
   try {
-    const division = await prisma.division.update({
-      where: { id },
-      data,
-      include: { chef: { select: chefSelect } },
+    const division = await prisma.$transaction(async (tx) => {
+      const updated = await tx.division.update({
+        where: { id },
+        data,
+        include: { chef: { select: chefSelect } },
+      });
+      await tx.journalAudit.create({
+        data: {
+          auteurId: user.id,
+          identifiant: user.email,
+          action: "modification_division",
+          cible: String(id),
+          details: `Modification de la division ${updated.libelle}. Champs modifiés : ${Object.keys(data).join(", ")}.`,
+        },
+      });
+      return updated;
     });
     res.json({ data: division });
   } catch (error) {
@@ -201,14 +228,27 @@ export async function getSection(req: Request, res: Response) {
 
 export async function createSection(req: Request, res: Response) {
   const data = sectionCreateSchema.parse(req.body);
+  const user = getAuthenticatedUser(res);
   await ensureDivisionExists(data.divisionId);
   try {
-    const section = await prisma.section.create({
-      data,
-      include: {
-        division: { select: { id: true, libelle: true } },
-        chef: { select: chefSelect },
-      },
+    const section = await prisma.$transaction(async (tx) => {
+      const created = await tx.section.create({
+        data,
+        include: {
+          division: { select: { id: true, libelle: true } },
+          chef: { select: chefSelect },
+        },
+      });
+      await tx.journalAudit.create({
+        data: {
+          auteurId: user.id,
+          identifiant: user.email,
+          action: "creation_section",
+          cible: String(created.id),
+          details: `Création de la section ${created.libelle} dans la division ${created.division.libelle} (chef : agent #${created.chefId}).`,
+        },
+      });
+      return created;
     });
     res.status(201).json({ data: section });
   } catch (error) {
@@ -219,17 +259,30 @@ export async function createSection(req: Request, res: Response) {
 export async function updateSection(req: Request, res: Response) {
   const id = parseId(req.params.id, "section");
   const data = sectionUpdateSchema.parse(req.body);
+  const user = getAuthenticatedUser(res);
   if (data.divisionId !== undefined) {
     await ensureDivisionExists(data.divisionId);
   }
   try {
-    const section = await prisma.section.update({
-      where: { id },
-      data,
-      include: {
-        division: { select: { id: true, libelle: true } },
-        chef: { select: chefSelect },
-      },
+    const section = await prisma.$transaction(async (tx) => {
+      const updated = await tx.section.update({
+        where: { id },
+        data,
+        include: {
+          division: { select: { id: true, libelle: true } },
+          chef: { select: chefSelect },
+        },
+      });
+      await tx.journalAudit.create({
+        data: {
+          auteurId: user.id,
+          identifiant: user.email,
+          action: "modification_section",
+          cible: String(id),
+          details: `Modification de la section ${updated.libelle}. Champs modifiés : ${Object.keys(data).join(", ")}.`,
+        },
+      });
+      return updated;
     });
     res.json({ data: section });
   } catch (error) {

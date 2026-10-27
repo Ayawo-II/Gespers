@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type MouseEvent } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ButtonLink, Card, Empty, PageHeader } from "@/components/ui";
+import { Card, Empty, PageHeader } from "@/components/ui";
 import { StatutBadge } from "@/components/status";
 import { useStore } from "@/lib/store/api-store";
 import { hasPermission } from "@/lib/rbac";
@@ -16,7 +17,15 @@ export default function AgentsPage() {
   const [q, setQ] = useState("");
   const [typeAgentFilter, setTypeAgentFilter] = useState<string>("");
   const [service, setService] = useState("");
-  const canWrite = currentCompte ? hasPermission(currentCompte.role, "agents.write") : false;
+  const [openingCreatePage, setOpeningCreatePage] = useState(false);
+  const canWrite = currentCompte
+    ? hasPermission(currentCompte.role, "agents.write") ||
+      hasPermission(
+        currentCompte.role,
+        "agents.create.division",
+        currentCompte.permissions,
+      )
+    : false;
   const canExport = currentCompte ? hasPermission(currentCompte.role, "export") : false;
 
   const rows = useMemo(() => {
@@ -49,8 +58,31 @@ export default function AgentsPage() {
     state.divisions,
   ]);
 
+  function openCreatePage(event: MouseEvent<HTMLAnchorElement>) {
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    if (openingCreatePage) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      router.push("/agents/nouveau");
+      return;
+    }
+
+    setOpeningCreatePage(true);
+    window.setTimeout(() => router.push("/agents/nouveau"), 320);
+  }
+
   return (
-    <>
+    <div className={openingCreatePage ? "agents-list-page--leaving" : undefined}>
       <PageHeader title="Agents" subtitle="Cycle de vie administratif du personnel de Radio Lomé">
         {canExport ? (
           <button
@@ -68,7 +100,11 @@ export default function AgentsPage() {
             Exporter CSV
           </button>
         ) : null}
-        {canWrite ? <ButtonLink href="/agents/nouveau">Enregistrer un agent</ButtonLink> : null}
+        {canWrite ? (
+          <Link className="btn btn-primary" href="/agents/nouveau" onClick={openCreatePage}>
+            Enregistrer un agent
+          </Link>
+        ) : null}
       </PageHeader>
       <Card>
         <div className="filters">
@@ -130,6 +166,6 @@ export default function AgentsPage() {
           </div>
         )}
       </Card>
-    </>
+    </div>
   );
 }

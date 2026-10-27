@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Alert, Button, Field } from "@/components/ui";
 import { useStore } from "@/lib/store/api-store";
+import { hasPermission } from "@/lib/rbac";
 import {
   CATEGORIE_LABELS,
   CLASSE_LABELS,
@@ -53,10 +54,49 @@ const empty = (id: string): Agent => ({
 } as Agent);
 
 export function AgentForm({ initial, isNew }: { initial?: Agent; isNew: boolean }) {
-  const { state, saveAgent } = useStore();
+  const { state, saveAgent, currentCompte } = useStore();
   const router = useRouter();
-  const [agent, setAgent] = useState<Agent>(initial ?? empty(uid("ag")));
+  const canWriteAll = currentCompte
+    ? hasPermission(currentCompte.role, "agents.write")
+    : false;
+  const canCreateInDivision = currentCompte
+    ? hasPermission(
+        currentCompte.role,
+        "agents.create.division",
+        currentCompte.permissions,
+      )
+    : false;
+  const delegatedDivision =
+    !canWriteAll && canCreateInDivision
+      ? state.divisions.find((division) => division.chefId === currentCompte?.agentId)
+      : undefined;
+  const availableDivisions = delegatedDivision ? [delegatedDivision] : state.divisions;
+
+  const [agent, setAgent] = useState<Agent>(() => {
+    if (initial) {
+      const division = state.divisions.find((d) => d.libelle === initial.service);
+      return { ...initial, divisionId: initial.divisionId ?? division?.id ?? "" };
+    }
+    const division = delegatedDivision ?? state.divisions[0];
+    return {
+      ...empty(uid("ag")),
+      service: division?.libelle ?? "",
+      divisionId: division?.id ?? "",
+    };
+  });
   const [error, setError] = useState("");
+  const [createdAccount, setCreatedAccount] = useState<{
+    email: string;
+    password: string;
+  } | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const selectedDivision =
+    availableDivisions.find((division) => division.id === agent.divisionId) ??
+    availableDivisions.find((division) => division.libelle === agent.service);
+  const sectionsForDivision = selectedDivision
+    ? state.sections.filter((section) => section.divisionId === selectedDivision.id)
+    : [];
 
   function set<K extends keyof Agent>(key: K, value: Agent[K]) {
     setAgent((a) => {
@@ -74,17 +114,29 @@ export function AgentForm({ initial, isNew }: { initial?: Agent; isNew: boolean 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
-    if (!agent.sectionId) {
-      setError("La section d'affectation est obligatoire.");
+    if (isNew && !agent.email?.trim()) {
+      setError("L'adresse e-mail est obligatoire pour créer le compte de l'agent.");
       return;
     }
     if (agent.email && !agent.email.includes("@")) {
       setError("Adresse e-mail invalide.");
       return;
     }
+    const section = agent.sectionId
+      ? state.sections.find((item) => item.id === agent.sectionId)
+      : undefined;
+    const division = section
+      ? state.divisions.find((item) => item.id === section.divisionId)
+      : selectedDivision;
+    if (!division) {
+      setError("Sélectionnez une division ou une section d'affectation.");
+      return;
+    }
     const res = await saveAgent(
       {
         ...agent,
+        divisionId: division.id,
+        service: division.libelle,
         fonction: agent.fonction || agent.poste || "",
         poste: agent.poste || agent.fonction,
         statut: agent.typeAgent,
@@ -97,7 +149,76 @@ export function AgentForm({ initial, isNew }: { initial?: Agent; isNew: boolean 
       setError(res.error);
       return;
     }
+    if (isNew && res.temporaryPassword && agent.email) {
+      setCreatedAccount({
+        email: agent.email.trim().toLowerCase(),
+        password: res.temporaryPassword,
+      });
+      return;
+    }
     router.push(`/agents/${agent.id}`);
+  }
+
+  if (createdAccount) {
+    const createdAgent = state.agents.find(
+      (item) => item.matricule === agent.matricule,
+    );
+    return (
+      <div className="card">
+        <h3 style={{ color: "var(--navy)", marginBottom: 10 }}>
+          Agent et compte créés
+        </h3>
+        <Alert>
+          Transmettez ces identifiants au nouvel agent. Le mot de passe temporaire
+          ne sera plus affiché ensuite et devra être changé à la première connexion.
+        </Alert>
+        <div style={{ display: "grid", gap: 10, marginTop: 14 }}>
+          <div>
+            <span className="muted">Adresse e-mail : </span>
+            <strong>{createdAccount.email}</strong>
+          </div>
+          <div>
+            <span className="muted">Mot de passe temporaire : </span>
+            <code
+              style={{
+                padding: "4px 8px",
+                borderRadius: 6,
+                background: "var(--surface-2, #f1f5f9)",
+                fontSize: 14,
+              }}
+            >
+              {createdAccount.password}
+            </code>
+          </div>
+        </div>
+        <div className="actions" style={{ marginTop: 18 }}>
+          <Button
+            type="button"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(
+                  `${createdAccount.email}\n${createdAccount.password}`,
+                );
+                setCopied(true);
+              } catch {
+                setCopied(false);
+              }
+            }}
+          >
+            {copied ? "Identifiants copiés" : "Copier les identifiants"}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() =>
+              router.push(createdAgent ? `/agents/${createdAgent.id}` : "/agents")
+            }
+          >
+            Voir la fiche de l&apos;agent
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -192,8 +313,14 @@ export function AgentForm({ initial, isNew }: { initial?: Agent; isNew: boolean 
       </div>
 
       <div className="form-row">
-        <Field label="E-mail">
-          <input type="email" value={agent.email ?? ""} onChange={(e) => set("email", e.target.value)} />
+        <Field label={isNew ? "E-mail *" : "E-mail"}>
+          <input
+            type="email"
+            value={agent.email ?? ""}
+            onChange={(e) => set("email", e.target.value)}
+            required={isNew}
+            placeholder="prenom.nom@radiolome.tg"
+          />
         </Field>
         <Field label="Adresse de résidence">
           <input value={agent.adresse} onChange={(e) => set("adresse", e.target.value)} />
@@ -316,43 +443,47 @@ export function AgentForm({ initial, isNew }: { initial?: Agent; isNew: boolean 
       </div>
 
       <p className="muted" style={{ fontSize: 12, marginBottom: 6, fontWeight: 600 }}>Affectation</p>
+      {delegatedDivision ? (
+        <Alert>
+          Votre droit de création est limité à la division {delegatedDivision.libelle}.
+        </Alert>
+      ) : null}
       <div className="form-row-3">
-        <Field label="Service / Division">
+        <Field label="Division d'affectation *">
           <select
-            value={agent.service}
+            value={selectedDivision?.id ?? ""}
             onChange={(e) => {
-              set("service", e.target.value);
-              set("sectionId", "");
+              const division = availableDivisions.find((d) => d.id === e.target.value);
+              setAgent((current) => ({
+                ...current,
+                divisionId: division?.id ?? "",
+                service: division?.libelle ?? "",
+                sectionId: "",
+              }));
             }}
+            required
+            disabled={Boolean(delegatedDivision)}
           >
-            {state.divisions.map((d) => (
-              <option key={d.id} value={d.libelle}>
-                {d.libelle}
+            <option value="">Sélectionner une division</option>
+            {availableDivisions.map((division) => (
+              <option key={division.id} value={division.id}>
+                {division.libelle}
               </option>
             ))}
-            {agent.service && !state.divisions.some((d) => d.libelle === agent.service) ? (
-              <option value={agent.service}>{agent.service}</option>
-            ) : null}
           </select>
         </Field>
-        <Field label="Section d'affectation *">
+        <Field label="Section (optionnelle)">
           <select
             value={agent.sectionId ?? ""}
             onChange={(e) => set("sectionId", e.target.value)}
-            required
+            disabled={!selectedDivision}
           >
-            <option value="">Sélectionner une section</option>
-            {(() => {
-              const currentDivision = state.divisions.find((d) => d.libelle === agent.service);
-              if (!currentDivision) return null;
-              return state.sections
-                .filter((s) => s.divisionId === currentDivision.id)
-                .map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.libelle}
-                  </option>
-                ));
-            })()}
+            <option value="">Aucune section (rattachement direct)</option>
+            {sectionsForDivision.map((section) => (
+              <option key={section.id} value={section.id}>
+                {section.libelle}
+              </option>
+            ))}
           </select>
         </Field>
         <Field label="Fonction / Intitulé du poste">
@@ -367,15 +498,30 @@ export function AgentForm({ initial, isNew }: { initial?: Agent; isNew: boolean 
         </Field>
       </div>
       {(() => {
-        if (!agent.sectionId) return null;
-        const section = state.sections.find((s) => String(s.id) === String(agent.sectionId));
-        if (!section) return null;
-        const chef = section.chefId ? state.agents.find((a) => a.id === section.chefId) : undefined;
-        return (
-          <p className="muted" style={{ fontSize: 12 }}>
-            Chef de section : {chef ? `${chef.prenoms} ${chef.nom}` : "Non renseigné"} — deviendra le supérieur direct de l&apos;agent.
-          </p>
-        );
+        if (agent.sectionId) {
+          const section = state.sections.find((s) => String(s.id) === String(agent.sectionId));
+          if (!section) return null;
+          const chef = section.chefId
+            ? state.agents.find((a) => a.id === section.chefId)
+            : undefined;
+          return (
+            <p className="muted" style={{ fontSize: 12 }}>
+              Chef de section : {chef ? `${chef.prenoms} ${chef.nom}` : "Non renseigné"} — deviendra le supérieur direct de l&apos;agent.
+            </p>
+          );
+        }
+        if (selectedDivision) {
+          const chef = selectedDivision.chefId
+            ? state.agents.find((a) => a.id === selectedDivision.chefId)
+            : undefined;
+          return (
+            <p className="muted" style={{ fontSize: 12 }}>
+              Aucune section sélectionnée : l&apos;agent sera rattaché directement à la division.
+              {" "}Chef de division : {chef ? `${chef.prenoms} ${chef.nom}` : "Non renseigné"}.
+            </p>
+          );
+        }
+        return null;
       })()}
 
       <div className="actions" style={{ marginTop: 20 }}>
