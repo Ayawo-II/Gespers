@@ -108,7 +108,7 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
 
 export const DELEGABLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   AGENT: [],
-  CHEF_SECTION: [],
+  CHEF_SECTION: ["agents.create.division"],
   CHEF_DIVISION: ["agents.create.division"],
   RESPONSABLE_RH: [],
   CHEF_PERSONNEL: [],

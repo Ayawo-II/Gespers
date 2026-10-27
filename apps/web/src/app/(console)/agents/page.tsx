@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type MouseEvent } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card, Empty, PageHeader } from "@/components/ui";
@@ -17,7 +17,6 @@ export default function AgentsPage() {
   const [q, setQ] = useState("");
   const [typeAgentFilter, setTypeAgentFilter] = useState<string>("");
   const [service, setService] = useState("");
-  const [openingCreatePage, setOpeningCreatePage] = useState(false);
   const canWrite = currentCompte
     ? hasPermission(currentCompte.role, "agents.write") ||
       hasPermission(
@@ -58,31 +57,8 @@ export default function AgentsPage() {
     state.divisions,
   ]);
 
-  function openCreatePage(event: MouseEvent<HTMLAnchorElement>) {
-    if (
-      event.defaultPrevented ||
-      event.button !== 0 ||
-      event.metaKey ||
-      event.ctrlKey ||
-      event.shiftKey ||
-      event.altKey
-    ) {
-      return;
-    }
-
-    event.preventDefault();
-    if (openingCreatePage) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      router.push("/agents/nouveau");
-      return;
-    }
-
-    setOpeningCreatePage(true);
-    window.setTimeout(() => router.push("/agents/nouveau"), 320);
-  }
-
   return (
-    <div className={openingCreatePage ? "agents-list-page--leaving" : undefined}>
+    <>
       <PageHeader title="Agents" subtitle="Cycle de vie administratif du personnel de Radio Lomé">
         {canExport ? (
           <button
@@ -101,7 +77,7 @@ export default function AgentsPage() {
           </button>
         ) : null}
         {canWrite ? (
-          <Link className="btn btn-primary" href="/agents/nouveau" onClick={openCreatePage}>
+          <Link className="btn btn-primary" href="/agents/nouveau">
             Enregistrer un agent
           </Link>
         ) : null}
@@ -166,6 +142,6 @@ export default function AgentsPage() {
           </div>
         )}
       </Card>
-    </div>
+    </>
   );
 }

@@ -47,6 +47,7 @@ const agentFields = {
   dateDebutStage: dateOnlySchema.nullable().optional(),
   dateFinStagePrevue: dateOnlySchema.nullable().optional(),
   dateFinContrat: dateOnlySchema.nullable().optional(),
+  dureeContratMois: z.number().int().min(1).max(1200).nullable().optional(),
   dateDernierAvancement: dateOnlySchema.nullable().optional(),
   dateDepart: dateOnlySchema.nullable().optional(),
   motifDepart: z
@@ -69,12 +70,14 @@ const agentPhotoSchema = z.object({
   photo: z.string().trim().max(2_000_000).nullable(),
 });
 
+// La division est obligatoire : soit renseignée directement, soit déduite d'une section.
 const createAgentSchema = z
   .object({
     ...agentFields,
     email: z.email().trim().toLowerCase().max(200),
     sectionId: z.number().int().positive().optional(),
     divisionId: z.number().int().positive().optional(),
+    role: z.enum(Role).optional(),
   })
   .refine((data) => data.sectionId !== undefined || data.divisionId !== undefined, {
     message: "Une division ou une section doit être renseignée.",
@@ -176,8 +179,10 @@ async function resolveAgentPlacement(
   tx: Prisma.TransactionClient,
   input: { sectionId?: number; divisionId?: number },
   user: AuthenticatedUser,
-  restrictToOwnDivision: boolean,
+  restrictToOwnScope: boolean,
 ): Promise<AgentPlacement> {
+  const isSectionChief = user.role === "CHEF_SECTION";
+
   if (input.sectionId !== undefined) {
     const section = await tx.section.findUnique({
       where: { id: input.sectionId },
@@ -202,15 +207,22 @@ async function resolveAgentPlacement(
         "SECTION_DIVISION_MISMATCH",
       );
     }
-    if (
-      restrictToOwnDivision &&
-      section.division.chefId !== user.personneId
-    ) {
-      throw new AppError(
-        "Vous ne pouvez créer un agent que dans votre division.",
-        403,
-        "DIVISION_SCOPE_FORBIDDEN",
-      );
+    if (restrictToOwnScope) {
+      if (isSectionChief) {
+        if (section.chefId !== user.personneId) {
+          throw new AppError(
+            "Vous ne pouvez créer un agent que dans votre section.",
+            403,
+            "SECTION_SCOPE_FORBIDDEN",
+          );
+        }
+      } else if (section.division.chefId !== user.personneId) {
+        throw new AppError(
+          "Vous ne pouvez créer un agent que dans votre division.",
+          403,
+          "DIVISION_SCOPE_FORBIDDEN",
+        );
+      }
     }
     return {
       divisionId: section.divisionId,
@@ -229,12 +241,21 @@ async function resolveAgentPlacement(
     if (!division) {
       throw new AppError("Division introuvable.", 404, "DIVISION_NOT_FOUND");
     }
-    if (restrictToOwnDivision && division.chefId !== user.personneId) {
-      throw new AppError(
-        "Vous ne pouvez créer un agent que dans votre division.",
-        403,
-        "DIVISION_SCOPE_FORBIDDEN",
-      );
+    if (restrictToOwnScope) {
+      if (isSectionChief) {
+        throw new AppError(
+          "Vous ne pouvez créer un agent que dans votre section.",
+          403,
+          "SECTION_SCOPE_FORBIDDEN",
+        );
+      }
+      if (division.chefId !== user.personneId) {
+        throw new AppError(
+          "Vous ne pouvez créer un agent que dans votre division.",
+          403,
+          "DIVISION_SCOPE_FORBIDDEN",
+        );
+      }
     }
     return {
       divisionId: division.id,
@@ -380,7 +401,8 @@ export async function getAgent(req: Request, res: Response) {
 
 export async function createAgent(req: Request, res: Response) {
   const user = getAuthenticatedUser(res);
-  const { sectionId, divisionId, ...data } = createAgentSchema.parse(req.body);
+  const { sectionId, divisionId, role: requestedRole, ...data } =
+    createAgentSchema.parse(req.body);
 
   const canWriteAll = hasEffectivePermission(user, "agents.write");
   const canCreateOwnDivision = hasEffectivePermission(
@@ -394,6 +416,10 @@ export async function createAgent(req: Request, res: Response) {
       "FORBIDDEN",
     );
   }
+
+  // Un créateur disposant de agents.write choisit le rôle ; un chef de
+  // division ou de section délégué crée uniquement des comptes Agent.
+  const accountRole: Role = canWriteAll ? requestedRole ?? Role.AGENT : Role.AGENT;
 
   const temporaryPassword = generateTemporaryPassword();
   const passwordHash = await argon2.hash(temporaryPassword, {
@@ -445,7 +471,7 @@ export async function createAgent(req: Request, res: Response) {
         data: {
           email: data.email,
           personneId: personne.id,
-          role: Role.AGENT,
+          role: accountRole,
           passwordHash,
           mustChangePassword: true,
         },
@@ -468,7 +494,7 @@ export async function createAgent(req: Request, res: Response) {
           identifiant: user.email,
           action: "creation_compte",
           cible: String(account.id),
-          details: `Création automatique du compte ${account.email} (rôle AGENT) pour l'agent ${personne.matricule}. Changement de mot de passe exigé à la première connexion.`,
+          details: `Création automatique du compte ${account.email} (rôle ${accountRole}) pour l'agent ${personne.matricule}. Changement de mot de passe exigé à la première connexion.`,
         },
       });
 

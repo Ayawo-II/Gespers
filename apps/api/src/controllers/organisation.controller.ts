@@ -8,7 +8,7 @@ const organisationIdSchema = z.coerce.number().int().positive();
 
 const divisionCreateSchema = z.object({
   libelle: z.string().trim().min(1).max(150),
-  chefId: z.number().int().positive(),
+  chefId: z.number().int().positive().nullable().optional(),
 });
 
 const divisionUpdateSchema = z
@@ -23,7 +23,7 @@ const divisionUpdateSchema = z
 const sectionCreateSchema = z.object({
   libelle: z.string().trim().min(1).max(150),
   divisionId: z.number().int().positive(),
-  chefId: z.number().int().positive(),
+  chefId: z.number().int().positive().nullable().optional(),
 });
 
 const sectionUpdateSchema = z
@@ -151,7 +151,9 @@ export async function createDivision(req: Request, res: Response) {
           identifiant: user.email,
           action: "creation_division",
           cible: String(created.id),
-          details: `Création de la division ${created.libelle} (chef : agent #${created.chefId}).`,
+          details: `Création de la division ${created.libelle}${
+            created.chefId ? ` (chef : agent #${created.chefId})` : ""
+          }.`,
         },
       });
       return created;
@@ -245,7 +247,9 @@ export async function createSection(req: Request, res: Response) {
           identifiant: user.email,
           action: "creation_section",
           cible: String(created.id),
-          details: `Création de la section ${created.libelle} dans la division ${created.division.libelle} (chef : agent #${created.chefId}).`,
+          details: `Création de la section ${created.libelle} dans la division ${created.division.libelle}${
+            created.chefId ? ` (chef : agent #${created.chefId})` : ""
+          }.`,
         },
       });
       return created;

@@ -51,8 +51,12 @@ export default function DashboardPage() {
     a.etatCarriere !== "SORTI" && a.situation !== "SORTI" && a.situation !== "fin_parcours";
   const estFonctionnaire = (a: (typeof state.agents)[number]) =>
     a.typeAgent === "FONCTIONNAIRE" || a.statut === "FONCTIONNAIRE";
+  const estContractuel = (a: (typeof state.agents)[number]) =>
+    a.typeAgent === "CONTRACTUEL" || a.statut === "CONTRACTUEL";
   const estTitulaire = (a: (typeof state.agents)[number]) =>
     a.etatCarriere === "TITULAIRE" || a.situation === "titulaire";
+  const estStagiaire = (a: (typeof state.agents)[number]) =>
+    a.etatCarriere === "STAGIAIRE" || a.situation === "stagiaire";
 
   const aujourdHui = new Date().toISOString().slice(0, 10);
   const horizon = addMonths(aujourdHui, 3);
@@ -91,6 +95,23 @@ export default function DashboardPage() {
   ).length;
   const enCoursTitul = titulaires + stagiaires;
   const tauxTitularisation = enCoursTitul ? Math.round((titulaires / enCoursTitul) * 100) : 0;
+
+  // --- Composition détaillée du personnel ---
+  const fonctionnairesTitulaires = perimetre.filter(
+    (a) => estFonctionnaire(a) && estTitulaire(a),
+  ).length;
+  const fonctionnairesStagiaires = perimetre.filter(
+    (a) => estFonctionnaire(a) && estStagiaire(a),
+  ).length;
+  const contractuelsSimples = perimetre.filter(
+    (a) => estContractuel(a) && estTitulaire(a),
+  ).length;
+  const stagiairesSimples = perimetre.filter(
+    (a) => estContractuel(a) && estStagiaire(a),
+  ).length;
+  const pigistes = perimetre.filter(
+    (a) => a.typeAgent === "PIGISTE" || a.statut === "PIGISTE",
+  ).length;
 
   const avancementsProches = perimetre
     .filter((a) => estActif(a) && estFonctionnaire(a) && estTitulaire(a))
@@ -154,7 +175,8 @@ export default function DashboardPage() {
         subtitle={`${ROLE_LABELS[role] ?? role} · ${currentAgent.fonction || currentAgent.poste} · ${currentAgent.service}`}
       />
 
-      <div className="grid grid-4">
+      {isAgent ? (
+        <div className="grid grid-4">
         <Card className="kpi">
           <span>{isAgent ? "Ma situation" : `Effectif ${perimetreLabel}`}</span>
           {isAgent ? (
@@ -214,7 +236,42 @@ export default function DashboardPage() {
           </strong>
           <em>{isAgent ? "Pièces actives" : "Échéance 2 ans dans 3 mois ou dépassée"}</em>
         </Card>
-      </div>
+        </div>
+      ) : null}
+
+      {!isAgent ? (
+        <>
+          <h3 style={{ color: "var(--navy)" }}>
+            Composition du personnel {perimetreLabel}
+          </h3>
+          <div className="grid grid-3">
+            <Card className="kpi">
+              <span>Effectif total</span>
+              <strong>{effectif}</strong>
+            </Card>
+            <Card className="kpi">
+              <span>Fonctionnaires titulaires</span>
+              <strong>{fonctionnairesTitulaires}</strong>
+            </Card>
+            <Card className="kpi">
+              <span>Fonctionnaires stagiaires</span>
+              <strong>{fonctionnairesStagiaires}</strong>
+            </Card>
+            <Card className="kpi">
+              <span>Contractuels</span>
+              <strong>{contractuelsSimples}</strong>
+            </Card>
+            <Card className="kpi">
+              <span>Stagiaires</span>
+              <strong>{stagiairesSimples}</strong>
+            </Card>
+            <Card className="kpi">
+              <span>Pigistes</span>
+              <strong>{pigistes}</strong>
+            </Card>
+          </div>
+        </>
+      ) : null}
 
       {parDivision.length > 0 ? (
         <>

@@ -148,6 +148,7 @@ model Personnes {
   dateDebutStage          DateTime?     @db.Date
   dateFinStagePrevue      DateTime?     @db.Date
   dateFinContrat          DateTime?     @db.Date
+  dureeContratMois        Int?
   dateDernierAvancement   DateTime?     @db.Date
   dateDepart              DateTime?     @db.Date
   motifDepart            MotifDepart?

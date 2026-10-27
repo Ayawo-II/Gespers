@@ -1,167 +1,107 @@
 "use client";
 
 import { useState } from "react";
-import { Alert, Card, PageHeader } from "@/components/ui";
+import { Alert, Button, Card, Empty, PageHeader } from "@/components/ui";
 import { useStore } from "@/lib/store/api-store";
-import { hasPermission, ROLE_PERMS, type Permission } from "@/lib/rbac";
-import { ROLE_LABELS, type Role } from "@/lib/types";
 import { fullName } from "@/lib/utils";
 
-const PERM_LABELS: Record<Permission, string> = {
-  "dashboard.read": "Tableau de bord institutionnel",
-  "agents.read.all": "Lecture de tous les agents",
-  "agents.read.team": "Lecture de l'équipe",
-  "agents.read.self": "Lecture de son dossier",
-  "agents.write": "Écriture agents",
-  "agents.photo.write": "Modification des photos de profil",
-  "avancements.read": "Lecture avancements",
-  "avancements.write": "Écriture avancements",
-  "grilles.read": "Lecture des grilles",
-  "grilles.write": "Paramétrage des grilles",
-  "courriers.read": "Lecture courriers",
-  "courriers.write": "Écriture courriers",
-  "conges.read.all": "Lecture de tous les congés",
-  "conges.read.team": "Lecture congés d'équipe",
-  "conges.read.self": "Lecture de ses congés",
-  "conges.write": "Enregistrement des congés",
-  "comptes.manage": "Gestion des comptes",
-  "roles.manage": "Gestion des rôles",
-  "permissions.manage": "Délégation des permissions",
-  "agents.create.division": "Création d'agents dans sa division",
-  "audit.read": "Journal d'audit",
-  "organisation.read": "Consultation de l'organigramme",
-  "organisation.write": "Gestion de l'organigramme",
-  export: "Export CSV",
-};
+const DELEGATED_PERMISSION = "agents.create.division";
 
-const PERMS = Object.keys(PERM_LABELS) as Permission[];
-const ROLES = Object.keys(ROLE_LABELS) as Role[];
-
-export default function RolesPage() {
-  const { state, changeRole, setComptePermissions, currentCompte } = useStore();
+export default function AccesPage() {
+  const { state, setComptePermissions } = useStore();
   const [msg, setMsg] = useState("");
-  const comptes = state.comptes.filter((c) => c.identifiant !== "systeme");
-  const canDelegate = currentCompte
-    ? hasPermission(
-        currentCompte.role,
-        "permissions.manage",
-        currentCompte.permissions,
-      )
-    : false;
+  const [error, setError] = useState("");
+
+  const chefs = state.comptes.filter(
+    (c) =>
+      c.identifiant !== "systeme" &&
+      (c.role === "CHEF_DIVISION" || c.role === "CHEF_SECTION"),
+  );
+
+  function perimetre(agentId: string) {
+    const division = state.divisions.find((d) => d.chefId === agentId);
+    if (division) return `Division : ${division.libelle}`;
+    const section = state.sections.find((s) => s.chefId === agentId);
+    if (section) return `Section : ${section.libelle}`;
+    return "Aucun périmètre";
+  }
+
+  async function toggle(
+    compteId: string,
+    identifiant: string,
+    hasAccess: boolean,
+  ) {
+    setMsg("");
+    setError("");
+    const compte = state.comptes.find((c) => c.id === compteId);
+    const current = compte?.permissions ?? [];
+    const next = hasAccess
+      ? current.filter((p) => p !== DELEGATED_PERMISSION)
+      : [...current, DELEGATED_PERMISSION];
+    const res = await setComptePermissions(compteId, next);
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    setMsg(
+      hasAccess
+        ? `Accès révoqué pour ${identifiant}.`
+        : `Accès accordé à ${identifiant}.`,
+    );
+  }
 
   return (
     <>
       <PageHeader
-        title="Rôles"
-        subtitle="Matrice des habilitations et affectation des profils"
+        title="Accès"
+        subtitle="Accorder ou révoquer le droit d'ajouter des membres aux chefs de division et de section"
       />
       {msg ? <Alert>{msg}</Alert> : null}
+      {error ? <Alert type="error">{error}</Alert> : null}
       <Card>
-        <h3>Matrice des droits</h3>
-        <div className="table-wrap" style={{ marginTop: 12 }}>
-          <table>
-            <thead>
-              <tr>
-                <th>Permission</th>
-                {ROLES.map((r) => (
-                  <th key={r}>{ROLE_LABELS[r]}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {PERMS.map((p) => (
-                <tr key={p}>
-                  <td>{PERM_LABELS[p]}</td>
-                  {ROLES.map((r) => (
-                    <td key={r}>{ROLE_PERMS[r].includes(p) ? "Oui" : "—"}</td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-      <Card>
-        <h3>Affecter un rôle</h3>
+        <h3>Ajout de membres</h3>
         <p className="muted">
-          Seul le chef du personnel peut déléguer à un chef de division le droit
-          de créer des agents, strictement dans sa propre division.
+          Un chef autorisé ne peut enregistrer un nouvel agent que dans son
+          propre périmètre : sa division, ou sa section.
         </p>
-        <div className="table-wrap" style={{ marginTop: 12 }}>
-          <table>
-            <thead>
-              <tr>
-                <th>Compte</th>
-                <th>Agent</th>
-                <th>Rôle actuel</th>
-                <th>Changer</th>
-                <th>Délégation</th>
-              </tr>
-            </thead>
-            <tbody>
-              {comptes.map((c) => {
-                const agent = state.agents.find((a) => a.id === c.agentId);
-                return (
-                  <tr key={c.id}>
-                    <td>{c.identifiant}</td>
-                    <td>{fullName(agent)}</td>
-                    <td>{ROLE_LABELS[c.role]}</td>
-                    <td>
-                      <select
-                        value={c.role}
-                        onChange={async (e) => {
-                          const res = await changeRole(c.id, e.target.value as Role);
-                          setMsg(
-                            res.ok
-                              ? `Rôle mis à jour pour ${c.identifiant}.`
-                              : res.error,
-                          );
-                        }}
-                      >
-                        {ROLES.map((r) => (
-                          <option key={r} value={r}>
-                            {ROLE_LABELS[r]}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td>
-                      {c.role === "CHEF_DIVISION" ? (
-                        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <input
-                            type="checkbox"
-                            checked={
-                              c.permissions?.includes("agents.create.division") ??
-                              false
-                            }
-                            disabled={!canDelegate}
-                            onChange={async (e) => {
-                              const next = e.target.checked
-                                ? [...(c.permissions ?? []), "agents.create.division"]
-                                : (c.permissions ?? []).filter(
-                                    (permission) =>
-                                      permission !== "agents.create.division",
-                                  );
-                              const res = await setComptePermissions(c.id, next);
-                              setMsg(
-                                res.ok
-                                  ? `Délégation mise à jour pour ${c.identifiant}.`
-                                  : res.error,
-                              );
-                            }}
-                          />
-                          Créer des agents dans sa division
-                        </label>
-                      ) : (
-                        <span className="muted">—</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        {chefs.length === 0 ? (
+          <Empty title="Aucun chef de division ou de section" />
+        ) : (
+          <div className="table-wrap" style={{ marginTop: 12 }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Compte</th>
+                  <th>Agent</th>
+                  <th>Périmètre</th>
+                  <th>Ajout de membres</th>
+                </tr>
+              </thead>
+              <tbody>
+                {chefs.map((c) => {
+                  const agent = state.agents.find((a) => a.id === c.agentId);
+                  const hasAccess =
+                    c.permissions?.includes(DELEGATED_PERMISSION) ?? false;
+                  return (
+                    <tr key={c.id}>
+                      <td>{c.identifiant}</td>
+                      <td>{fullName(agent)}</td>
+                      <td>{perimetre(c.agentId)}</td>
+                      <td>
+                        <Button
+                          variant={hasAccess ? "danger" : "primary"}
+                          onClick={() => toggle(c.id, c.identifiant, hasAccess)}
+                        >
+                          {hasAccess ? "Révoquer" : "Accorder"}
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Card>
     </>
   );

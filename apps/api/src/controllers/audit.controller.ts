@@ -60,14 +60,63 @@ export async function listAuditEntries(req: Request, res: Response) {
         cible: true,
         details: true,
         justification: true,
-        auteur: { select: { id: true, email: true } },
+        auteur: {
+          select: {
+            id: true,
+            email: true,
+            personne: { select: { nom: true, prenoms: true } },
+          },
+        },
       },
     }),
     prisma.journalAudit.count({ where }),
   ]);
 
+  // La cible peut désigner une personne (dossier) ou un compte : on résout le
+  // nom pour l'affichage, sinon on retombe sur la valeur brute.
+  const candidateIds = [
+    ...new Set(
+      entries
+        .map((entry) => Number(entry.cible))
+        .filter((id) => Number.isInteger(id) && id > 0),
+    ),
+  ];
+  const [personnes, comptes] = await prisma.$transaction([
+    prisma.personnes.findMany({
+      where: { id: { in: candidateIds } },
+      select: { id: true, nom: true, prenoms: true },
+    }),
+    prisma.utilisateur.findMany({
+      where: { id: { in: candidateIds } },
+      select: { id: true, personne: { select: { nom: true, prenoms: true } } },
+    }),
+  ]);
+  const nomById = new Map<number, string>();
+  for (const personne of personnes) {
+    nomById.set(personne.id, `${personne.prenoms} ${personne.nom}`.trim());
+  }
+  const compteNomById = new Map<number, string>();
+  for (const compte of comptes) {
+    compteNomById.set(
+      compte.id,
+      `${compte.personne.prenoms} ${compte.personne.nom}`.trim(),
+    );
+  }
+
+  const data = entries.map((entry) => {
+    const cibleId = Number(entry.cible);
+    const cibleNom =
+      Number.isInteger(cibleId) && cibleId > 0
+        ? nomById.get(cibleId) ?? compteNomById.get(cibleId) ?? null
+        : null;
+    const auteurNom = entry.auteur
+      ? `${entry.auteur.personne.prenoms} ${entry.auteur.personne.nom}`.trim()
+      : null;
+    return { ...entry, auteurNom, cibleNom };
+  });
+
   res.json({
-    data: entries,
+    data,
     meta: { page: query.page, limit: query.limit, total },
   });
 }

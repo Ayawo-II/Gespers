@@ -43,10 +43,6 @@ export default function DivisionsPage() {
       setError("Le libellé de la division est obligatoire.");
       return;
     }
-    if (!divisionChefId) {
-      setError("Le chef de division est obligatoire.");
-      return;
-    }
     const res = await saveDivision(
       {
         id: uid("div"),
@@ -70,10 +66,6 @@ export default function DivisionsPage() {
     setError("");
     if (!sectionLibelle.trim()) {
       setError("Le libellé de la section est obligatoire.");
-      return;
-    }
-    if (!sectionChefId) {
-      setError("Le chef de section est obligatoire.");
       return;
     }
     const res = await saveSection(
@@ -142,13 +134,12 @@ export default function DivisionsPage() {
                       required
                     />
                   </Field>
-                  <Field label="Chef de division">
+                  <Field label="Chef de division (optionnel)">
                     <select
                       value={divisionChefId}
                       onChange={(e) => setDivisionChefId(e.target.value)}
-                      required
                     >
-                      <option value="">Sélectionner un agent…</option>
+                      <option value="">Aucun chef pour l&apos;instant</option>
                       {state.agents.map((a) => (
                         <option key={a.id} value={a.id}>
                           {fullName(a)} — {a.fonction || a.poste}
@@ -224,13 +215,12 @@ export default function DivisionsPage() {
                                 required
                               />
                             </Field>
-                            <Field label="Chef de section">
+                            <Field label="Chef de section (optionnel)">
                               <select
                                 value={sectionChefId}
                                 onChange={(e) => setSectionChefId(e.target.value)}
-                                required
                               >
-                                <option value="">Sélectionner un agent…</option>
+                                <option value="">Aucun chef pour l&apos;instant</option>
                                 {state.agents.map((a) => (
                                   <option key={a.id} value={a.id}>
                                     {fullName(a)} – {a.fonction || a.poste}

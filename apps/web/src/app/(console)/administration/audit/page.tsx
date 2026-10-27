@@ -107,9 +107,9 @@ export default function AuditPage() {
               toCsv(
                 rows.map((entry) => ({
                   date: entry.date,
-                  identifiant: entry.identifiant ?? "",
+                  auteur: entry.auteurNom ?? entry.identifiant ?? "",
                   action: ACTION_LABELS[entry.action] ?? entry.action,
-                  cible: entry.cible,
+                  cible: entry.cibleNom ?? entry.cible,
                   details: entry.details,
                   justification: entry.justification ?? "",
                 })),
@@ -189,9 +189,9 @@ export default function AuditPage() {
                   {rows.map((entry) => (
                     <tr key={entry.id}>
                       <td>{formatDateTime(entry.date)}</td>
-                      <td>{entry.identifiant ?? "—"}</td>
+                      <td>{entry.auteurNom ?? entry.identifiant ?? "—"}</td>
                       <td>{ACTION_LABELS[entry.action] ?? entry.action}</td>
-                      <td>{entry.cible}</td>
+                      <td>{entry.cibleNom ?? entry.cible}</td>
                       <td>
                         {entry.details}
                         {entry.justification ? (

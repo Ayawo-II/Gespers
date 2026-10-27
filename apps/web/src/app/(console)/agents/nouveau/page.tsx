@@ -19,12 +19,12 @@ export default function NouvelAgentPage() {
     return (
       <Alert type="error">
         Seul le responsable RH, le chef du personnel ou un chef de division
-        habilité peut enregistrer un agent.
+        ou de section habilité peut enregistrer un agent.
       </Alert>
     );
   }
   return (
-    <div className="agent-create-page">
+    <div>
       <PageHeader
         title="Enregistrer un agent"
         subtitle="Identité, état civil, contact, formation et poste. Un dossier numérique est créé automatiquement."

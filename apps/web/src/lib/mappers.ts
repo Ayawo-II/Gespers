@@ -193,6 +193,7 @@ export function mapAgent(a: ApiRecord): Agent {
     dateDebutStage: (a.dateDebutStage as string | null) ?? null,
     dateFinStagePrevue: (a.dateFinStagePrevue as string | null) ?? null,
     dateFinContrat: (a.dateFinContrat as string | null) ?? null,
+    dureeContratMois: a.dureeContratMois == null ? null : num(a.dureeContratMois),
     dateDernierAvancement: (a.dateDernierAvancement as string | null) ?? null,
     dateDepart,
     motifDepart: (a.motifDepart as Agent["motifDepart"]) ?? null,
@@ -254,7 +255,11 @@ export function mapAffectations(
   });
 }
 
-export function agentToApiPayload(agent: Agent, isNew: boolean): Record<string, unknown> {
+export function agentToApiPayload(
+  agent: Agent,
+  isNew: boolean,
+  role?: Role,
+): Record<string, unknown> {
   const base: Record<string, unknown> = {
     nom: agent.nom,
     prenoms: agent.prenoms,
@@ -283,6 +288,7 @@ export function agentToApiPayload(agent: Agent, isNew: boolean): Record<string, 
   if (isNew) {
     return {
       ...base,
+      ...(role ? { role: roleToApi(role) } : {}),
       fonction: agent.fonction || agent.poste || "",
       categorie: agent.categorie || null,
       classe: agent.classe || null,
@@ -293,6 +299,10 @@ export function agentToApiPayload(agent: Agent, isNew: boolean): Record<string, 
       dateDebutStage: agent.dateDebutStage ?? null,
       dateFinStagePrevue: agent.dateFinStagePrevue ?? null,
       dateFinContrat: agent.dateFinContrat ?? null,
+      dureeContratMois:
+        agent.dureeContratMois == null || Number.isNaN(Number(agent.dureeContratMois))
+          ? null
+          : num(agent.dureeContratMois),
     };
   }
   return base;
@@ -433,8 +443,10 @@ export function mapAudit(e: ApiRecord): EntreeAudit {
     date: e.date ? new Date(str(e.date)).toISOString() : new Date().toISOString(),
     auteurId: e.auteurId ? str(e.auteurId) : undefined,
     identifiant: optStr(e.identifiant ?? auteur?.email),
+    auteurNom: optStr(e.auteurNom),
     action: str(e.action),
     cible: str(e.cible),
+    cibleNom: optStr(e.cibleNom),
     details: str(e.details),
     justification: optStr(e.justification),
   };

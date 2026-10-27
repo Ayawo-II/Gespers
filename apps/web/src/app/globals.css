@@ -104,10 +104,9 @@ textarea {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .agent-create-page,
-  .agents-list-page--leaving,
   .division-form-panel,
-  .division-details {
+  .division-details,
+  .motif-panel {
     animation: none;
     transition: none;
   }
@@ -115,34 +114,6 @@ textarea {
 
 .app-shell.collapsed {
   grid-template-columns: 78px 1fr;
-}
-
-.agent-create-page {
-  animation: agent-create-enter 440ms cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-@keyframes agent-create-enter {
-  from {
-    opacity: 0;
-    filter: blur(6px);
-    transform: translateY(24px) scale(0.96);
-  }
-  to {
-    opacity: 1;
-    filter: blur(0);
-    transform: translateY(0) scale(1);
-  }
-}
-
-.agents-list-page--leaving {
-  animation: agents-list-fade-out 320ms ease-in both;
-}
-
-@keyframes agents-list-fade-out {
-  to {
-    opacity: 0;
-    transform: translateY(-12px) scale(0.98);
-  }
 }
 
 .division-form-panel {
@@ -440,6 +411,53 @@ textarea {
   z-index: 10;
 }
 
+.topbar-profile {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 12px 3px 14px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+
+.topbar-profile:hover,
+.topbar-profile:focus-visible {
+  background: var(--green-soft);
+  border-color: var(--line);
+  outline: none;
+}
+
+.topbar-profile .avatar {
+  width: 34px;
+  height: 34px;
+  font-size: 13px;
+  background: var(--navy);
+  color: #ffffff;
+  flex-shrink: 0;
+}
+
+.topbar-profile-photo {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  display: block;
+}
+
+.topbar-profile-label {
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--navy);
+  transition: color 160ms ease;
+}
+
 .crumbs {
   font-size: 13px;
   color: var(--muted);
@@ -554,6 +572,36 @@ textarea {
 .btn-ghost:hover:not(:disabled) {
   background: rgba(0, 0, 0, 0.05);
   color: var(--ink);
+}
+
+.btn-icon {
+  padding: 0;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+}
+
+/* Champ motif de désactivation : ouverture progressive */
+.motif-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transform: translateY(-6px);
+  transition:
+    grid-template-rows 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 200ms ease,
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.motif-panel.is-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.motif-panel-inner {
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* Layout en Grille */

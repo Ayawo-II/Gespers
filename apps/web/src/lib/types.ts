@@ -144,6 +144,7 @@ export interface Personnes {
   dateDebutStage?: string | null;
   dateFinStagePrevue?: string | null;
   dateFinContrat?: string | null;
+  dureeContratMois?: number | null;
   dateDernierAvancement?: string | null;
   dateDepart?: string | null;
   motifDepart?: MotifDepart | null;
@@ -321,8 +322,10 @@ export interface EntreeAudit {
   date: string;
   auteurId?: string;
   identifiant?: string;
+  auteurNom?: string;
   action: string;
   cible: string;
+  cibleNom?: string;
   details: string;
   justification?: string;
 }
@@ -365,6 +368,15 @@ export const ROLE_LABELS: Record<string, string> = {
   chef_personnel: "Chef du personnel",
   dg: "Directeur général",
 };
+
+export const ROLE_OPTIONS: Role[] = [
+  "AGENT",
+  "CHEF_SECTION",
+  "CHEF_DIVISION",
+  "RESPONSABLE_RH",
+  "CHEF_PERSONNEL",
+  "DG",
+];
 
 export const TYPE_AGENT_LABELS: Record<string, string> = {
   FONCTIONNAIRE: "Fonctionnaire",

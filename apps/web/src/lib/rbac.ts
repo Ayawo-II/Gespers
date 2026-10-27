@@ -1,4 +1,4 @@
-﻿import type { Role } from "@/lib/types";
+import type { Role } from "@/lib/types";
 
 export type Permission =
   | "dashboard.read"
@@ -232,9 +232,7 @@ export const NAV_PATHS_BY_ROLE: Partial<Record<string, readonly string[]>> = {
     "/conges",
     "/recherche",
     "/administration/comptes",
-    "/administration/roles",
     "/administration/audit",
-    "/parametres/grilles",
   ],
   rh: [
     "/tableau-de-bord",
@@ -246,9 +244,7 @@ export const NAV_PATHS_BY_ROLE: Partial<Record<string, readonly string[]>> = {
     "/conges",
     "/recherche",
     "/administration/comptes",
-    "/administration/roles",
     "/administration/audit",
-    "/parametres/grilles",
   ],
   CHEF_PERSONNEL: [
     "/tableau-de-bord",
@@ -262,7 +258,6 @@ export const NAV_PATHS_BY_ROLE: Partial<Record<string, readonly string[]>> = {
     "/administration/comptes",
     "/administration/roles",
     "/administration/audit",
-    "/parametres/grilles",
   ],
   chef_personnel: [
     "/tableau-de-bord",
@@ -276,7 +271,6 @@ export const NAV_PATHS_BY_ROLE: Partial<Record<string, readonly string[]>> = {
     "/administration/comptes",
     "/administration/roles",
     "/administration/audit",
-    "/parametres/grilles",
   ],
 };
 
@@ -313,9 +307,6 @@ export function canAccessPath(
   if (pathname.startsWith("/agents")) {
     return can("agents.read.all") || can("agents.read.team");
   }
-  if (pathname.startsWith("/parametres/grilles")) {
-    return can("grilles.read") || can("grilles.write");
-  }
   if (pathname.startsWith("/avancements")) return can("avancements.read");
   if (pathname.startsWith("/courriers")) return can("courriers.read");
   if (pathname.startsWith("/conges")) {
@@ -326,7 +317,7 @@ export function canAccessPath(
     );
   }
   if (pathname.startsWith("/administration/comptes")) return can("comptes.manage");
-  if (pathname.startsWith("/administration/roles")) return can("roles.manage");
+  if (pathname.startsWith("/administration/roles")) return can("permissions.manage");
   if (pathname.startsWith("/administration/audit")) return can("audit.read");
   if (pathname.startsWith("/administration")) {
     return (

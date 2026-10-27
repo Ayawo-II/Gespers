@@ -43,6 +43,7 @@ export default function AgentDetailPage() {
     saveDocument,
     saveConge,
     enregistrerAvancement,
+    saveAgent,
     updateAgentPhoto,
     updateMyPhoto,
   } = useStore();
@@ -53,6 +54,11 @@ export default function AgentDetailPage() {
   const [showCarriere, setShowCarriere] = useState(false);
   const [showDossier, setShowDossier] = useState(false);
   const [showConge, setShowConge] = useState(false);
+  const [showAffectation, setShowAffectation] = useState(false);
+
+  // Formulaire Affectation (division / section)
+  const [affDivisionId, setAffDivisionId] = useState("");
+  const [affSectionId, setAffSectionId] = useState("");
 
   // Formulaire Avancement manuel (inline)
   const [avDate, setAvDate] = useState(todayIso());
@@ -107,6 +113,16 @@ export default function AgentDetailPage() {
     isSelf ||
     (currentCompte ? hasPermission(currentCompte.role, "agents.photo.write") : false);
   const chef = agent.chefId ? state.agents.find((a) => a.id === agent.chefId) : null;
+  const agentSection = agent.sectionId
+    ? state.sections.find((section) => section.id === agent.sectionId)
+    : undefined;
+  const agentDivision =
+    (agentSection
+      ? state.divisions.find((division) => division.id === agentSection.divisionId)
+      : undefined) ?? state.divisions.find((division) => division.libelle === agent.service);
+  const affSections = affDivisionId
+    ? state.sections.filter((section) => section.divisionId === affDivisionId)
+    : [];
 
   async function onChangePhoto(file: File | undefined) {
     if (!file || !agent) return;
@@ -144,6 +160,42 @@ export default function AgentDetailPage() {
       setAvEchelon(agent?.echelon ?? 1);
     }
     setShowCarriere((v) => !v);
+  }
+
+  function toggleAffectation() {
+    if (!showAffectation) {
+      setAffDivisionId(agentDivision?.id ?? "");
+      setAffSectionId(agentSection?.id ?? "");
+    }
+    setShowAffectation((v) => !v);
+    setError("");
+    setMsg("");
+  }
+
+  async function onSaveAffectation(e: FormEvent) {
+    e.preventDefault();
+    setError("");
+    setMsg("");
+    if (!affDivisionId) {
+      setError("Sélectionnez une division d'affectation.");
+      return;
+    }
+    const division = state.divisions.find((d) => d.id === affDivisionId);
+    const res = await saveAgent(
+      {
+        ...agent!,
+        divisionId: affDivisionId,
+        sectionId: affSectionId,
+        service: division?.libelle ?? agent!.service,
+      },
+      false,
+    );
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    setMsg("Affectation mise à jour.");
+    setShowAffectation(false);
   }
 
   async function onAvancement(e: FormEvent) {
@@ -312,6 +364,11 @@ export default function AgentDetailPage() {
       >
         {canWrite ? <ButtonLink href={`/agents/${agent.id}/edit`}>Modifier la fiche</ButtonLink> : null}
         {canWrite ? (
+          <Button variant="secondary" onClick={toggleAffectation}>
+            {showAffectation ? "Fermer l'affectation" : "Changer l'affectation"}
+          </Button>
+        ) : null}
+        {canWrite ? (
           <Button variant="secondary" onClick={toggleCarriere}>
             {showCarriere ? "Fermer l'avancement" : "Avancement manuel"}
           </Button>
@@ -344,6 +401,62 @@ export default function AgentDetailPage() {
 
       {msg ? <Alert>{msg}</Alert> : null}
       {error ? <Alert type="error">{error}</Alert> : null}
+
+      {/* Panneau inline : changement d'affectation */}
+      {canWrite && showAffectation ? (
+        <Card style={{ marginBottom: 16, borderLeft: "6px solid var(--blue)" }}>
+          <h3 style={{ color: "var(--navy)", marginBottom: 12 }}>Changer l&apos;affectation</h3>
+          <Alert>
+            Division actuelle : {agent.service || "—"} · Section actuelle :{" "}
+            {agentSection ? agentSection.libelle : "Aucune (rattaché à la division)"}
+          </Alert>
+          <form className="form" onSubmit={onSaveAffectation}>
+            <div className="form-row">
+              <Field label="Division d'affectation *">
+                <select
+                  value={affDivisionId}
+                  onChange={(e) => {
+                    setAffDivisionId(e.target.value);
+                    setAffSectionId("");
+                  }}
+                  required
+                >
+                  <option value="">Sélectionner une division</option>
+                  {state.divisions.map((division) => (
+                    <option key={division.id} value={division.id}>
+                      {division.libelle}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Section (optionnelle)">
+                <select
+                  value={affSectionId}
+                  onChange={(e) => setAffSectionId(e.target.value)}
+                  disabled={!affDivisionId}
+                >
+                  <option value="">Aucune section (rattachement direct)</option>
+                  {affSections.map((section) => (
+                    <option key={section.id} value={section.id}>
+                      {section.libelle}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            <div className="actions">
+              <Button type="submit">Enregistrer l&apos;affectation</Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setShowAffectation(false)}
+              >
+                Annuler
+              </Button>
+            </div>
+          </form>
+        </Card>
+      ) : null}
 
       {/* Panneau inline : Avancement manuel */}
       {canWrite && showCarriere ? (
@@ -714,6 +827,12 @@ export default function AgentDetailPage() {
               <p style={{ fontWeight: 600, marginTop: 4 }}>
                 {formatDate(agent.dateDebutStage ?? undefined)} → {formatDate(agent.dateFinStagePrevue ?? undefined)} (prévu)
               </p>
+            </div>
+          ) : null}
+          {agent.dureeContratMois ? (
+            <div>
+              <span className="muted">Durée du contrat :</span>
+              <p style={{ fontWeight: 600, marginTop: 4 }}>{agent.dureeContratMois} mois</p>
             </div>
           ) : null}
           {agent.dateFinContrat ? (

@@ -92,6 +92,7 @@ type StoreContextValue = {
   saveAgent: (
     agent: Agent,
     isNew: boolean,
+    role?: Role,
   ) => Promise<{ ok: true; temporaryPassword?: string } | { ok: false; error: string }>;
   updateAgentPhoto: (agentId: string, photo: string | null) => Promise<Result>;
   updateMyPhoto: (photo: string | null) => Promise<Result>;
@@ -391,12 +392,12 @@ export function ApiStoreProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
-  const saveAgent: StoreContextValue["saveAgent"] = async (agent, isNew) => {
+  const saveAgent: StoreContextValue["saveAgent"] = async (agent, isNew, role) => {
     try {
       if (isNew) {
         const res = await apiFetch<{ temporaryPassword?: string }>("/api/v1/agents", {
           method: "POST",
-          body: JSON.stringify(agentToApiPayload(agent, true)),
+          body: JSON.stringify(agentToApiPayload(agent, true, role)),
         });
         await reload();
         return { ok: true, temporaryPassword: res.temporaryPassword };

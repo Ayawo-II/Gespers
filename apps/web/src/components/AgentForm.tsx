@@ -8,10 +8,13 @@ import { hasPermission } from "@/lib/rbac";
 import {
   CATEGORIE_LABELS,
   CLASSE_LABELS,
+  ROLE_LABELS,
+  ROLE_OPTIONS,
   type Agent,
   type Categorie,
   type Classe,
   type EtatCarriere,
+  type Role,
   type TypeAgent,
 } from "@/lib/types";
 import { readPhotoFile } from "@/lib/photo";
@@ -70,21 +73,32 @@ export function AgentForm({ initial, isNew }: { initial?: Agent; isNew: boolean 
     !canWriteAll && canCreateInDivision
       ? state.divisions.find((division) => division.chefId === currentCompte?.agentId)
       : undefined;
-  const availableDivisions = delegatedDivision ? [delegatedDivision] : state.divisions;
+  const delegatedSection =
+    !canWriteAll && canCreateInDivision && !delegatedDivision
+      ? state.sections.find((section) => section.chefId === currentCompte?.agentId)
+      : undefined;
+  const scopeDivision =
+    delegatedDivision ??
+    (delegatedSection
+      ? state.divisions.find((division) => division.id === delegatedSection.divisionId)
+      : undefined);
+  const availableDivisions = scopeDivision ? [scopeDivision] : state.divisions;
 
   const [agent, setAgent] = useState<Agent>(() => {
     if (initial) {
       const division = state.divisions.find((d) => d.libelle === initial.service);
       return { ...initial, divisionId: initial.divisionId ?? division?.id ?? "" };
     }
-    const division = delegatedDivision ?? state.divisions[0];
+    const division = scopeDivision ?? state.divisions[0];
     return {
       ...empty(uid("ag")),
       service: division?.libelle ?? "",
       divisionId: division?.id ?? "",
+      sectionId: delegatedSection?.id ?? "",
     };
   });
   const [error, setError] = useState("");
+  const [compteRole, setCompteRole] = useState<Role>("AGENT");
   const [createdAccount, setCreatedAccount] = useState<{
     email: string;
     password: string;
@@ -94,9 +108,11 @@ export function AgentForm({ initial, isNew }: { initial?: Agent; isNew: boolean 
   const selectedDivision =
     availableDivisions.find((division) => division.id === agent.divisionId) ??
     availableDivisions.find((division) => division.libelle === agent.service);
-  const sectionsForDivision = selectedDivision
-    ? state.sections.filter((section) => section.divisionId === selectedDivision.id)
-    : [];
+  const sectionsForDivision = delegatedSection
+    ? [delegatedSection]
+    : selectedDivision
+      ? state.sections.filter((section) => section.divisionId === selectedDivision.id)
+      : [];
 
   function set<K extends keyof Agent>(key: K, value: Agent[K]) {
     setAgent((a) => {
@@ -144,6 +160,7 @@ export function AgentForm({ initial, isNew }: { initial?: Agent; isNew: boolean 
         nombreEnfants: agent.nbreEnfant,
       },
       isNew,
+      isNew && canWriteAll ? compteRole : undefined,
     );
     if (!res.ok) {
       setError(res.error);
@@ -312,7 +329,7 @@ export function AgentForm({ initial, isNew }: { initial?: Agent; isNew: boolean 
         </Field>
       </div>
 
-      <div className="form-row">
+      <div className={isNew && canWriteAll ? "form-row-3" : "form-row"}>
         <Field label={isNew ? "E-mail *" : "E-mail"}>
           <input
             type="email"
@@ -322,6 +339,20 @@ export function AgentForm({ initial, isNew }: { initial?: Agent; isNew: boolean 
             placeholder="prenom.nom@radiolome.tg"
           />
         </Field>
+        {isNew && canWriteAll ? (
+          <Field label="Rôle du compte">
+            <select
+              value={compteRole}
+              onChange={(e) => setCompteRole(e.target.value as Role)}
+            >
+              {ROLE_OPTIONS.map((r) => (
+                <option key={r} value={r}>
+                  {ROLE_LABELS[r] ?? r}
+                </option>
+              ))}
+            </select>
+          </Field>
+        ) : null}
         <Field label="Adresse de résidence">
           <input value={agent.adresse} onChange={(e) => set("adresse", e.target.value)} />
         </Field>
@@ -347,7 +378,7 @@ export function AgentForm({ initial, isNew }: { initial?: Agent; isNew: boolean 
             onChange={(e) => {
               const v = e.target.value as TypeAgent;
               set("typeAgent", v);
-              if (v !== "FONCTIONNAIRE") {
+              if (v === "PIGISTE") {
                 set("etatCarriere", "TITULAIRE");
               }
             }}
@@ -361,7 +392,7 @@ export function AgentForm({ initial, isNew }: { initial?: Agent; isNew: boolean 
           <select
             value={agent.etatCarriere}
             onChange={(e) => set("etatCarriere", e.target.value as EtatCarriere)}
-            disabled={!isNew || agent.typeAgent !== "FONCTIONNAIRE"}
+            disabled={!isNew || agent.typeAgent === "PIGISTE"}
           >
             <option value="STAGIAIRE">Stagiaire</option>
             <option value="TITULAIRE">Titulaire</option>
@@ -378,6 +409,24 @@ export function AgentForm({ initial, isNew }: { initial?: Agent; isNew: boolean 
           />
         </Field>
       </div>
+
+      {(agent.etatCarriere === "STAGIAIRE" || agent.situation === "STAGIAIRE") && (
+        <div className="form-row" style={{ marginTop: 12 }}>
+          <Field label="Durée du contrat (mois)">
+            <input
+              type="number"
+              min={1}
+              value={agent.dureeContratMois ?? ""}
+              onChange={(e) =>
+                set(
+                  "dureeContratMois",
+                  e.target.value === "" ? null : Number(e.target.value),
+                )
+              }
+            />
+          </Field>
+        </div>
+      )}
 
       <div className="form-row" style={{ marginTop: 12 }}>
         <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -476,9 +525,11 @@ export function AgentForm({ initial, isNew }: { initial?: Agent; isNew: boolean 
           <select
             value={agent.sectionId ?? ""}
             onChange={(e) => set("sectionId", e.target.value)}
-            disabled={!selectedDivision}
+            disabled={!selectedDivision || Boolean(delegatedSection)}
           >
-            <option value="">Aucune section (rattachement direct)</option>
+            {delegatedSection ? null : (
+              <option value="">Aucune section (rattachement direct)</option>
+            )}
             {sectionsForDivision.map((section) => (
               <option key={section.id} value={section.id}>
                 {section.libelle}

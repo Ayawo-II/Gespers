@@ -130,6 +130,13 @@ export async function updateAccountRole(req: Request, res: Response) {
   const id = parseId(req.params.id);
   const { role } = changeRoleSchema.parse(req.body);
   const user = getAuthenticatedUser(res);
+  if (id === user.id) {
+    throw new AppError(
+      "Vous ne pouvez pas modifier le rôle de votre propre compte.",
+      403,
+      "SELF_ROLE_FORBIDDEN",
+    );
+  }
   try {
     const account = await prisma.$transaction(async (tx) => {
       const existing = await tx.utilisateur.findUnique({

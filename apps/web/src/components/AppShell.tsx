@@ -19,7 +19,6 @@ import {
   IconLogout,
   IconMail,
   IconMenu,
-  IconSettings,
   IconShield,
   IconUser,
   IconUsers,
@@ -40,9 +39,8 @@ const NAV: {
   { href: "/divisions", label: "Divisions", Icon: IconBuilding, perm: "organisation.read", group: "Personnel" },
   { href: "/courriers", label: "Courriers", Icon: IconMail, perm: "courriers.read", group: "Administration" },
   { href: "/administration/comptes", label: "Comptes", Icon: IconKey, perm: "comptes.manage", group: "Gouvernance" },
-  { href: "/administration/roles", label: "Rôles", Icon: IconShield, perm: "roles.manage", group: "Gouvernance" },
+  { href: "/administration/roles", label: "Accès", Icon: IconShield, perm: "permissions.manage", group: "Gouvernance" },
   { href: "/administration/audit", label: "Journal d'audit", Icon: IconFileText, perm: "audit.read", group: "Gouvernance" },
-  { href: "/parametres/grilles", label: "Grilles d'avancement", Icon: IconSettings, perm: "grilles.write", group: "Gouvernance" },
 ];
 
 function getFallbackPageInfo(pathname: string, currentAgent: Agent | null): { title: string; subtitle?: string } {
@@ -109,25 +107,19 @@ function getFallbackPageInfo(pathname: string, currentAgent: Agent | null): { ti
   if (pathname === "/administration/comptes") {
     return {
       title: "Comptes",
-      subtitle: "Création, désactivation motivée et réinitialisation des accès",
+      subtitle: "Rôles, désactivation motivée et réinitialisation des accès",
     };
   }
   if (pathname === "/administration/roles") {
     return {
-      title: "Rôles",
-      subtitle: "Matrice des habilitations et affectation des profils",
+      title: "Accès",
+      subtitle: "Délégation du droit d'ajouter des membres aux chefs de division et de section",
     };
   }
   if (pathname === "/administration/audit") {
     return {
       title: "Journal d'audit",
       subtitle: "Traçabilité des opérations et connexions",
-    };
-  }
-  if (pathname === "/parametres/grilles") {
-    return {
-      title: "Grilles d'avancement",
-      subtitle: "Paramètres utilisés pour les propositions automatiques de classe et d'échelon",
     };
   }
   return { title: "Gespres_RL Radio Lomé" };
@@ -314,7 +306,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span className="badge badge-green" style={{ fontSize: 11 }}>
               La Station du plaisir
             </span>
-            <span className="muted" style={{ fontWeight: 600 }}>{currentCompte.identifiant}</span>
+            <button
+              type="button"
+              className="topbar-profile"
+              onClick={logout}
+              aria-label="Se déconnecter"
+            >
+              <span className="topbar-profile-label" aria-hidden>
+                Se déconnecter
+              </span>
+              {currentAgent?.photo ? (
+                <img
+                  src={currentAgent.photo}
+                  alt=""
+                  className="topbar-profile-photo"
+                />
+              ) : (
+                <span className="avatar" aria-hidden>
+                  {currentAgent?.prenoms?.[0] ?? ""}
+                  {currentAgent?.nom?.[0] ?? ""}
+                </span>
+              )}
+            </button>
           </div>
         </header>
         <div className="content">
