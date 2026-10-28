@@ -26,12 +26,18 @@ function teamIds(
   }
 
   if (role === "CHEF_DIVISION") {
-    const divisionIds = new Set(divisions.filter((d) => d.chefId === self.id).map((d) => d.id));
+    const mesDivisions = divisions.filter((d) => d.chefId === self.id);
+    const divisionIds = new Set(mesDivisions.map((d) => d.id));
+    const libelles = new Set(mesDivisions.map((d) => d.libelle));
     const sectionIds = new Set(
       sections.filter((s) => divisionIds.has(s.divisionId)).map((s) => s.id),
     );
     for (const aff of affectations) {
       if (aff.agentId && aff.sectionId && sectionIds.has(aff.sectionId)) ids.add(aff.agentId);
+    }
+    // Membres rattachés directement à la division (sans section).
+    for (const agent of agents) {
+      if (agent.service && libelles.has(agent.service)) ids.add(agent.id);
     }
   }
 
@@ -74,7 +80,10 @@ export function agentsDeMaSection(
   return agents.filter((a) => ids.has(a.id));
 }
 
-/** Agents rattachés à la division d'un chef (affectations + agents dont chefId = chef). */
+/**
+ * Agents de la division d'un chef : membres rattachés directement à la division
+ * (sans section) et membres rattachés à ses sections.
+ */
 export function agentsDeMaDivision(
   agents: Agent[],
   self: Agent | null,

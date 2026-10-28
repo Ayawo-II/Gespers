@@ -44,7 +44,7 @@ export default function LoginPage() {
       <section className="login-panel">
         <form className="login-card" onSubmit={onSubmit}>
           <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 8 }}>
-            <h1 style={{ color: "var(--navy)", fontSize: "24px" }}>Connexion Gespres_RL</h1>
+            <h1 style={{ color: "var(--navy)", fontSize: "24px" }}>Connexion Gespers RL</h1>
             <p style={{ color: "var(--muted)", fontSize: "14px" }}>
               Saisissez vos identifiants pour accéder à votre espace
             </p>

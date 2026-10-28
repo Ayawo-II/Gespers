@@ -9,7 +9,7 @@ import { useStore } from "@/lib/store/api-store";
 import { CLASSE_LABELS, ROLE_LABELS } from "@/lib/types";
 import { apiFetch } from "@/services/api";
 import { addMonths, formatDate, fullName, lastAvancementDate } from "@/lib/utils";
-import { agentsDeMaDivision, agentsDeMaSection } from "@/lib/visibility";
+import { agentsDeMaDivision, agentsDeMaSection, agentsHorsSection, vueSection } from "@/lib/visibility";
 
 const STATUT_COLORS: Record<string, string> = {
   FONCTIONNAIRE: "#008751", // Vert Togo
@@ -112,6 +112,9 @@ export default function DashboardPage() {
   const pigistes = perimetre.filter(
     (a) => a.typeAgent === "PIGISTE" || a.statut === "PIGISTE",
   ).length;
+  const finsParcours = perimetre.filter(
+    (a) => a.etatCarriere === "SORTI" || a.situation === "SORTI" || a.situation === "fin_parcours",
+  ).length;
 
   const avancementsProches = perimetre
     .filter((a) => estActif(a) && estFonctionnaire(a) && estTitulaire(a))
@@ -161,10 +164,16 @@ export default function DashboardPage() {
   const parDivision =
     isAgent || isChefSection || isChefDivision
       ? []
-      : state.divisions.map((d) => ({
-          division: d,
-          effectif: state.agents.filter((a) => a.service === d.libelle).length,
-        }));
+      : state.divisions.map((d) => {
+          const ids = new Set<string>();
+          const vues = state.sections
+            .filter((s) => s.divisionId === d.id)
+            .map((s) => vueSection(s, state.agents, state.affectations));
+          for (const vue of vues) for (const m of vue.membres) ids.add(m.id);
+          for (const a of agentsHorsSection(d, vues, state.agents)) ids.add(a.id);
+          if (d.chefId) ids.add(d.chefId);
+          return { division: d, effectif: ids.size };
+        });
   const maxDivision = Math.max(1, ...parDivision.map((x) => x.effectif));
   const totalDivision = parDivision.reduce((n, x) => n + x.effectif, 0);
 
@@ -244,10 +253,14 @@ export default function DashboardPage() {
           <h3 style={{ color: "var(--navy)" }}>
             Composition du personnel {perimetreLabel}
           </h3>
-          <div className="grid grid-3">
+          <div className="grid grid-4">
             <Card className="kpi">
               <span>Effectif total</span>
               <strong>{effectif}</strong>
+            </Card>
+            <Card className="kpi">
+              <span>Agents en fonction</span>
+              <strong>{effectifActif}</strong>
             </Card>
             <Card className="kpi">
               <span>Fonctionnaires titulaires</span>
@@ -268,6 +281,10 @@ export default function DashboardPage() {
             <Card className="kpi">
               <span>Pigistes</span>
               <strong>{pigistes}</strong>
+            </Card>
+            <Card className="kpi">
+              <span>Fins de parcours</span>
+              <strong>{finsParcours}</strong>
             </Card>
           </div>
         </>

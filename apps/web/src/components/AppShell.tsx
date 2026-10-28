@@ -122,7 +122,7 @@ function getFallbackPageInfo(pathname: string, currentAgent: Agent | null): { ti
       subtitle: "Traçabilité des opérations et connexions",
     };
   }
-  return { title: "Gespres_RL Radio Lomé" };
+  return { title: "Gespers RL Radio Lomé" };
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -216,7 +216,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   Radio Lomé
                   <span className="brand-badge">TG</span>
                 </h1>
-                <p>Gespres_RL – Suivi agents</p>
+                <p>Gespers RL – Suivi agents</p>
               </div>
             </div>
           </div>

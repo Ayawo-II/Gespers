@@ -991,7 +991,7 @@ textarea {
   height: 76%;
   border-radius: 50%;
   object-fit: cover;
-  opacity: 0.35;
+  opacity: 0.22;
   pointer-events: none;
   user-select: none;
 }

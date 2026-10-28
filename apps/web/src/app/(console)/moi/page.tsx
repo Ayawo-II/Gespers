@@ -180,7 +180,7 @@ export default function MoiPage() {
           {/* Section Compte Utilisateur */}
           <Card>
             <h3 style={{ color: "var(--navy)", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
-              <IconKey size={20} /> Compte utilisateur Gespres_RL
+              <IconKey size={20} /> Compte utilisateur Gespers RL
             </h3>
             <div className="grid grid-3">
               <div>
